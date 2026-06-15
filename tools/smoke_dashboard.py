@@ -45,7 +45,9 @@ def main() -> int:
                               backend="mediapipe", model_complexity=1, plate_backend="hsv")
     a = result["analysis"]
     adv = app._advanced(a)
-    rec = app._summary_record(a, result, adv, clip.stem)
+    c = app._confidence(a)
+    s = app._strength(a, 80.0, "male", 100.0)  # sample weights to exercise the strength path
+    rec = app._summary_record(a, result, adv, clip.stem, c, s, 80.0, "male", 100.0)
     rid = history.save_run(SMOKE_DB, rec)
     saved = history.get_run(SMOKE_DB, rid)
 
@@ -54,6 +56,8 @@ def main() -> int:
     assert saved is not None and saved["video_name"] == clip.stem, "history row not saved"
 
     print("rep_count:", a["rep_count"], "| advanced:", adv)
+    print("confidence:", c)
+    print("strength:", s)
     print("annotated:", annotated, "exists:", annotated.exists())
     print("history row id:", rid, "| view:", saved["view"])
     print("SMOKE PASS")

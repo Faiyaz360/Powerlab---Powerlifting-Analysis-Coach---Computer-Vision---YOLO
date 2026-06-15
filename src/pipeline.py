@@ -35,6 +35,7 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
         raise ValueError("No frames decoded — is the video file valid?")
 
     analysis = metricsmod.analyze(pose, lift)
+    analysis["pose_landmarks"] = pose.landmarks  # exposed for the confidence/off-axis check (Phase 2)
     faults = faultsmod.detect_faults(analysis, lift)
     cues = coachmod.coach_from_issues(faults["issue_list"], analysis["rep_count"])
 
