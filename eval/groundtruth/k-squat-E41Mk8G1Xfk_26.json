@@ -1,0 +1,11 @@
+{
+  "video": "clips_kinetics/squat/E41Mk8G1Xfk_26.mp4",
+  "lift": "squat",
+  "_confidence": "high",
+  "true_rep_count": 2,
+  "per_rep_legal_pass": [
+    true,
+    true
+  ],
+  "_note": "clean-ish, slightly off-side"
+}

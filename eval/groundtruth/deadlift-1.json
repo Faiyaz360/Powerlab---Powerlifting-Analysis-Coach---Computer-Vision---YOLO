@@ -1,0 +1,6 @@
+{
+  "video": "input/deadlift-1.mov",
+  "lift": "deadlift",
+  "true_rep_count": 3,
+  "per_rep_legal_pass": [true, true, true]
+}

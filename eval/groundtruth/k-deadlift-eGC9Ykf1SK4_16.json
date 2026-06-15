@@ -1,0 +1,11 @@
+{
+  "video": "clips_kinetics/deadlifting/eGC9Ykf1SK4_16.mp4",
+  "lift": "deadlift",
+  "_confidence": "medium",
+  "true_rep_count": 2,
+  "per_rep_legal_pass": [
+    true,
+    true
+  ],
+  "_note": "plate slightly out at bottom"
+}

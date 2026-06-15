@@ -1,0 +1,12 @@
+{
+  "video": "clips_kinetics/squat/upVOY01QDpI_29.mp4",
+  "lift": "squat",
+  "_confidence": "low",
+  "true_rep_count": 3,
+  "per_rep_legal_pass": [
+    false,
+    false,
+    false
+  ],
+  "_note": "downward camera angle - depth labels low confidence"
+}

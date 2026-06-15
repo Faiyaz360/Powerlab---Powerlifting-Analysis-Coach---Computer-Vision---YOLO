@@ -1,0 +1,11 @@
+{
+  "video": "clips_kinetics/squat/U7b4jSjtdFQ_30.mp4",
+  "lift": "squat",
+  "_confidence": "high",
+  "true_rep_count": 2,
+  "per_rep_legal_pass": [
+    true,
+    true
+  ],
+  "_note": "plate exits frame - bar-speed unreliable, depth/rep (pose) OK"
+}

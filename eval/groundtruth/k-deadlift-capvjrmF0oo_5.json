@@ -1,0 +1,10 @@
+{
+  "video": "clips_kinetics/deadlifting/capvjrmF0oo_5.mp4",
+  "lift": "deadlift",
+  "_confidence": "medium",
+  "true_rep_count": 1,
+  "per_rep_legal_pass": [
+    true
+  ],
+  "_note": "plate half-out at start+bottom; lockout judged from top"
+}

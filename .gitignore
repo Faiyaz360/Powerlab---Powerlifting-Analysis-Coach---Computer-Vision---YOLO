@@ -1,0 +1,25 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.posecache/
+input/*
+output/*
+!input/.gitkeep
+!output/.gitkeep
+.env
+
+dataset/
+dataset_roboflow/
+runs/
+yolo11*.pt
+clips/
+clips_kinetics/
+
+# model weights / large binaries (re-trainable / re-downloadable) — keep out of git
+*.pt
+*.task
+*.onnx
+weights/
+# Phase 2 local history (re-creatable)
+data/

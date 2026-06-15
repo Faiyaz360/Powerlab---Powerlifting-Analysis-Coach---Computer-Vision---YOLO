@@ -1,0 +1,25 @@
+# Powerlifting form-analysis tool — dependencies
+# Install order follows the build phases in the plan.
+
+# --- Phase 1: core local pipeline (needed now) ---
+mediapipe>=0.10.18      # pose estimation (bring-up model, runs on CPU)
+opencv-python>=4.9      # video read/write + drawing overlays
+numpy>=1.26             # angle math
+matplotlib>=3.8         # report charts (angle / bar-path plots)
+pytest>=8.0             # unit tests
+
+# --- Phase 2: web app (add later) ---
+# gradio>=4.0           # pure-Python web UI for the Hugging Face Space
+
+# --- Phase 3: GPU pose backend (installed). Use --pose yolo ---
+# Install torch WITH CUDA (bundles the runtime — do NOT use onnxruntime-gpu on Windows):
+#   pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# torch==2.5.1+cu121
+# torchvision==0.20.1+cu121
+# ultralytics>=8.4      # YOLO11-pose (GPU). Weights auto-download on first use.
+
+# --- Phase 4: barbell tracking (add later) ---
+# ultralytics>=8.3      # YOLO11 plate detection
+
+# --- Phase 5: LLM coaching phrasing (add later) ---
+# anthropic>=0.40       # Claude turns the issue list into coaching cues

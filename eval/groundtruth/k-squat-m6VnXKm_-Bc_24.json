@@ -1,0 +1,10 @@
+{
+  "video": "clips_kinetics/squat/m6VnXKm_-Bc_24.mp4",
+  "lift": "squat",
+  "_confidence": "low",
+  "true_rep_count": 1,
+  "per_rep_legal_pass": [
+    true
+  ],
+  "_note": "1 full + a half rep - rep count ambiguous; analyzer counting 2 not clearly wrong"
+}

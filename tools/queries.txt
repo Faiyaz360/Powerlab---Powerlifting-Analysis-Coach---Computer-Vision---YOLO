@@ -1,0 +1,12 @@
+# Search terms for tools/gather_clips.py (CC-only YouTube). One per line. '#' = comment.
+# Goal: dead side-on squat / deadlift singles (the only valid angle — see CLAUDE.md/LESSONS.md).
+# Edit freely. Re-running gather_clips.py only fetches NEW clips, so this is safe to schedule.
+
+squat form side view
+back squat technique
+powerlifting squat single
+raw squat depth
+deadlift form side view
+conventional deadlift technique
+sumo deadlift form
+powerlifting meet deadlift

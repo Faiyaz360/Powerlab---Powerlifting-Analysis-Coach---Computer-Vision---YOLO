@@ -1,0 +1,309 @@
+"""Barbell tracking + velocity (VBT) by tracking the WEIGHT-PLATE CENTRE.
+
+The plate is the right target (large, rigid, vivid on competition plates) — this is how Qwik/
+Metric work. We segment the plate by colour (high saturation, any hue → works for blue/red/
+green/yellow plates), keep the round blob nearest the bar (anchored by the wrist/shoulder from
+the pose, so we don't lock onto a background plate or clothing), and take its centre + diameter
+per frame. Pixels→metres comes from the 450 mm plate diameter. Velocity is a Butterworth-filtered
+derivative of the plate's vertical position.
+
+Refs: tlancon/barbellcv, kostecky/VBT-Barbell-Tracker, Balsalobre-Fernández 2021.
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+from . import pose as P
+
+# Optional trained YOLO plate detector (colour-agnostic). Falls back to HSV if absent.
+_PLATE_MODEL_PATH = Path(__file__).resolve().parent.parent / "models" / "plate.pt"
+_plate_model = None
+_plate_model_loaded = False
+
+PLATE_DIAMETER_M = 0.450  # IPF/IWF standard competition / bumper plate
+
+S_MIN, V_MIN = 90, 60     # a plate is a saturated, bright colour (hue-agnostic at acquisition)
+CIRCULARITY_MIN = 0.55    # contourArea / enclosing-circle area — rejects non-round blobs
+HUE_TOL = 18              # once locked onto the plate's hue, reject other-colour blobs (bg plate)
+MIN_PEAK_MS = 0.3         # a real concentric pull peaks above this; below = height drift, not a rep
+_KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+
+# (left, right) landmark slots whose midpoint sits near the plate on the camera side
+_BAR_ANCHOR = {
+    "deadlift": (P.L_WRIST, P.R_WRIST),
+    "squat": (P.L_SHOULDER, P.R_SHOULDER),
+}
+
+
+def track_plate(video_path, pose: P.PoseResult, lift: str, plate_backend: str = "hsv", progress=None):
+    """Per-frame plate centre (x, y) in pixels and radius. Gaps interpolated.
+
+    ``plate_backend``: "hsv" (colour+shape, default) or "yolo" (trained detector, colour-agnostic
+    — needs models/plate.pt; better on same-colour-background clips but a noisier signal).
+    Returns (centers[n,2], radii[n]).
+    """
+    anchor = _anchor_series(pose, lift)
+    cap = cv2.VideoCapture(str(video_path))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    n = pose.num_frames
+    min_r, max_r = int(h * 0.05), int(h * 0.25)
+    min_area = np.pi * min_r * min_r * 0.5
+
+    centers = np.full((n, 2), np.nan)
+    radii = np.full(n, np.nan)
+    model = _load_plate_model() if plate_backend == "yolo" else None  # opt-in; else HSV
+    max_jump = h * 0.12          # reject frame-to-frame jumps (e.g. onto a background plate)
+    prev, rejects, locked_hue = None, 0, None
+    f = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok or f >= n:
+            break
+        # Detect near the POSE anchor (stable, on the bar) — finds the right plate.
+        if model is not None:
+            hit = _detect_plate_yolo(model, frame, anchor[f], min_r, max_r)
+        else:
+            hit = _detect_plate(frame, anchor[f], min_r, max_r, min_area)
+        if hit is not None:
+            # Hue-lock only matters for the colour-based HSV detector; the trained model is
+            # shape-based, so skip it there.
+            hue = _patch_hue(frame, hit[0], hit[1]) if model is None else None
+            jump_ok = prev is None or np.hypot(hit[0][0] - prev[0], hit[0][1] - prev[1]) <= max_jump
+            hue_ok = model is not None or locked_hue is None or hue is None or _hue_diff(hue, locked_hue) <= HUE_TOL
+            if jump_ok and hue_ok:
+                centers[f] = hit[0]
+                radii[f] = hit[1]
+                prev, rejects = hit[0], 0
+                if locked_hue is None and hue is not None:
+                    locked_hue = hue   # lock onto the plate's colour after first good detection
+            else:
+                rejects += 1            # far jump or wrong colour (background plate) — drop it
+                if rejects > 20:        # keep seeing it -> re-acquire position (keep hue lock)
+                    prev = None
+        f += 1
+        if progress:
+            progress(f)
+    cap.release()
+
+    centers[:, 0] = _interp(centers[:, 0])
+    centers[:, 1] = _interp(centers[:, 1])
+    return centers, radii
+
+
+def _load_plate_model():
+    """Load the trained YOLO plate detector once, if present. Returns the model or None."""
+    global _plate_model, _plate_model_loaded
+    if not _plate_model_loaded:
+        _plate_model_loaded = True
+        if _PLATE_MODEL_PATH.exists():
+            try:
+                from ultralytics import YOLO
+                _plate_model = YOLO(str(_PLATE_MODEL_PATH))
+            except Exception:
+                _plate_model = None
+    return _plate_model
+
+
+def _detect_plate_yolo(model, frame, anchor, min_r, max_r):
+    """Trained-detector plate: box nearest the bar anchor (else largest). Returns ((x,y), r)."""
+    import torch
+
+    device = 0 if torch.cuda.is_available() else "cpu"
+    res = model.predict(frame, device=device, verbose=False, conf=0.25)[0]
+    if res.boxes is None or len(res.boxes) == 0:
+        return None
+    has_anchor = not np.any(np.isnan(anchor))
+    best, best_key = None, None
+    for x, y, w, h in res.boxes.xywh.cpu().numpy():
+        r = (w + h) / 4.0
+        if r < min_r or r > max_r:
+            continue
+        dist = float(np.hypot(x - anchor[0], y - anchor[1])) if has_anchor else 0.0
+        key = (-dist,) if has_anchor else (w * h,)
+        if best_key is None or key > best_key:
+            best_key, best = key, ((float(x), float(y)), float(r))
+    return best
+
+
+def _detect_plate(frame, anchor, min_r, max_r, min_area):
+    """Largest round, saturated blob nearest the bar anchor. Returns ((x,y), r) or None."""
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    mask = cv2.inRange(hsv, (0, S_MIN, V_MIN), (180, 255, 255))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, _KERNEL)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, _KERNEL)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    has_anchor = not np.any(np.isnan(anchor))
+    best, best_key = None, None
+    for c in contours:
+        area = cv2.contourArea(c)
+        if area < min_area:
+            continue
+        (x, y), r = cv2.minEnclosingCircle(c)
+        if r < min_r or r > max_r:
+            continue
+        if area / (np.pi * r * r) < CIRCULARITY_MIN:
+            continue
+        dist = float(np.hypot(x - anchor[0], y - anchor[1])) if has_anchor else 0.0
+        # nearest the anchor wins (tie-break: larger). No anchor -> largest.
+        key = (-dist, area) if has_anchor else (area,)
+        if best_key is None or key > best_key:
+            best_key, best = key, ((x, y), r)
+    return best
+
+
+def _anchor_series(pose: P.PoseResult, lift: str) -> np.ndarray:
+    lm = pose.landmarks
+    li, ri = _BAR_ANCHOR[lift]
+    n = pose.num_frames
+    xy = np.full((n, 2), np.nan)
+    for f in range(n):
+        pts = [lm[f, i, :2] for i in (li, ri) if not np.any(np.isnan(lm[f, i, :2]))]
+        if pts:
+            xy[f] = np.mean(pts, axis=0)
+    xy[:, 0] = _interp(xy[:, 0])
+    xy[:, 1] = _interp(xy[:, 1])
+    return xy
+
+
+def scale_from_radii(radii: np.ndarray):
+    """Metres per pixel from the median plate diameter. None if no plate ever detected."""
+    valid = radii[~np.isnan(radii)]
+    if len(valid) == 0:
+        return None
+    return PLATE_DIAMETER_M / (2.0 * float(np.median(valid)))
+
+
+def velocity_per_rep(bar_xy, reps, fps, scale):
+    """Per-rep concentric velocity from the plate's vertical motion (Butterworth-filtered).
+
+    The concentric is the span where the bar is actually moving UP (velocity above a threshold),
+    so a pause/hold at the top is excluded. Returns a list aligned with ``reps``.
+    """
+    y = _lowpass(_median3(_interp(bar_xy[:, 1].astype(float))), fps)
+    vel_px = -np.gradient(y) * fps                 # px/s, upward positive
+    out = []
+    for r in reps:
+        valley, top = r["bottom"], r["top"]        # floor and lockout, from the BAR signal
+        if top <= valley:
+            out.append(None)
+            continue
+        # Pull start = the LAST moment near the floor before the rise to the lockout peak. This
+        # anchors the concentric to the actual pull and excludes any long setup at the floor.
+        seg_y = y[valley : top + 1]
+        yfloor, ytop = float(seg_y.max()), float(seg_y.min())
+        rom = yfloor - ytop
+        if rom <= 0:
+            out.append(None)
+            continue
+        c0 = valley + int(np.where(seg_y >= yfloor - 0.1 * rom)[0][-1])
+        c1 = top                                    # lockout peak (clean, from find_peaks)
+        if c1 <= c0:
+            out.append(None)
+            continue
+        disp_px = float(y[c0] - y[c1])
+        dt = (c1 - c0) / fps
+        peak_px = float(np.max(vel_px[c0 : c1 + 1]))
+        if scale and peak_px * scale < MIN_PEAK_MS:
+            continue  # not a real concentric pull — drop this spurious bar rep
+        mcv_px = disp_px / dt if dt > 0 else 0.0
+        out.append(_pack(disp_px, mcv_px, peak_px, dt, scale))
+    return out
+
+
+def _pack(disp_px, mcv_px, peak_px, dt, scale):
+    calibrated = scale is not None
+    return {
+        "calibrated": calibrated,
+        "mean_velocity_ms": round(mcv_px * scale, 3) if calibrated else None,
+        "peak_velocity_ms": round(peak_px * scale, 3) if calibrated else None,
+        "rom_m": round(abs(disp_px) * scale, 3) if calibrated else None,
+        "mean_velocity_px_s": round(mcv_px, 1),
+        "peak_velocity_px_s": round(peak_px, 1),
+        "rom_px": round(abs(disp_px), 1),
+        "concentric_s": round(dt, 2),
+    }
+
+
+def _interp(series):
+    s = series.copy()
+    idx = np.arange(len(s))
+    good = ~np.isnan(s)
+    if good.sum() == 0:
+        return s
+    s[~good] = np.interp(idx[~good], idx[good], s[good])
+    return s
+
+
+def _patch_hue(frame, center, r):
+    """Median hue of a small patch at the plate centre (for colour locking)."""
+    x, y = int(center[0]), int(center[1])
+    rr = max(3, int(r * 0.3))
+    patch = frame[max(0, y - rr): y + rr, max(0, x - rr): x + rr]
+    if patch.size == 0:
+        return None
+    hsv = cv2.cvtColor(patch, cv2.COLOR_BGR2HSV)
+    return float(np.median(hsv[:, :, 0]))
+
+
+def _hue_diff(h1, h2):
+    """Circular hue distance (OpenCV hue is 0..180)."""
+    d = abs(h1 - h2)
+    return min(d, 180 - d)
+
+
+def detect_bar_reps(bar_xy, fps, scale, min_rom_m=0.12):
+    """Reps from the PLATE's vertical motion (not the body pose).
+
+    Each rep's concentric = floor (a height valley) -> lockout (a height peak). Peaks are found
+    with a prominence of one real rep's ROM, so holds/jitter don't create spurious reps. Returns
+    [{bottom, top}] frame indices.
+    """
+    y = _lowpass(_median3(_interp(bar_xy[:, 1].astype(float))), fps)
+    height = -y  # up is positive
+    try:
+        from scipy.signal import find_peaks
+    except Exception:
+        return []
+    if np.count_nonzero(np.isfinite(height)) < 2:
+        return []  # plate never tracked (e.g. fully out of frame) -> no bar-based reps
+    rng = float(np.nanmax(height) - np.nanmin(height))
+    prom = max(min_rom_m / scale, 0.1 * rng) if scale else 0.25 * rng
+    peaks, _ = find_peaks(height, prominence=prom, distance=max(1, int(fps * 0.5)))
+
+    reps, prev = [], 0
+    for pk in peaks:
+        seg = height[prev:pk]
+        if len(seg):
+            valley = prev + int(np.argmin(seg))
+            if pk > valley:
+                reps.append({"bottom": valley, "top": int(pk)})
+        prev = int(pk)
+    return reps
+
+
+def _median3(y):
+    """3-tap median to kill single-frame detection jumps before filtering."""
+    if len(y) < 3:
+        return y
+    out = y.copy()
+    out[1:-1] = np.median(np.stack([y[:-2], y[1:-1], y[2:]]), axis=0)
+    return out
+
+
+def _lowpass(y, fps, cutoff=10.0, order=4):
+    """Zero-lag Butterworth low-pass; falls back to a moving average if scipy is unavailable."""
+    if len(y) <= order * 3:
+        return y
+    try:
+        from scipy.signal import butter, filtfilt
+
+        wn = min(cutoff / (fps / 2.0), 0.99)
+        b, a = butter(order, wn, btype="low")
+        return filtfilt(b, a, y)
+    except Exception:
+        k = 5
+        return np.convolve(y, np.ones(k) / k, mode="same")

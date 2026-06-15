@@ -1,0 +1,6 @@
+{
+  "video": "input/squat-1.mov",
+  "lift": "squat",
+  "true_rep_count": 1,
+  "per_rep_legal_pass": [true]
+}
