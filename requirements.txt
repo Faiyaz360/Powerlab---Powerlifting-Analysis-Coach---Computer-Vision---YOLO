@@ -8,8 +8,8 @@ numpy>=1.26             # angle math
 matplotlib>=3.8         # report charts (angle / bar-path plots)
 pytest>=8.0             # unit tests
 
-# --- Phase 2: web app (add later) ---
-# gradio>=4.0           # pure-Python web UI for the Hugging Face Space
+# --- Phase 2: web app ---
+gradio>=4.0             # pure-Python web UI (Phase 2)
 
 # --- Phase 3: GPU pose backend (installed). Use --pose yolo ---
 # Install torch WITH CUDA (bundles the runtime — do NOT use onnxruntime-gpu on Windows):
