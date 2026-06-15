@@ -50,6 +50,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
 
     rep_end_frames = [r["end"] for r in reps]
     badge_window = max(1, int(pose.fps * 0.3))  # show each badge ~0.3s around its frame
+    bar_speeds, bar_vmax = _bar_speeds(bar_xy)  # per-frame plate speed -> colour the bar path
 
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
@@ -67,7 +68,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             done = sum(1 for e in rep_end_frames if e <= f)
             cv2.putText(frame, f"Reps: {done}", (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.1, YELLOW, 2)
             _draw_badge(frame, f, rep_metrics, badge_window)
-            _draw_bar_path(frame, bar_xy, f)
+            _draw_bar_path(frame, bar_xy, f, bar_speeds, bar_vmax)
         writer.write(frame)
         f += 1
 
@@ -93,15 +94,42 @@ def _draw_angle(frame, lm, f, joint_idx, primary):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, WHITE, 2)
 
 
-def _draw_bar_path(frame, bar_xy, f):
+def _speed_color(t: float):
+    """Normalized speed t in [0,1] -> BGR. Slow = blue, fast = red (no green — avoids clashing
+    with the green skeleton). Unit-tested."""
+    t = 0.0 if t < 0 else 1.0 if t > 1 else t
+    return (int(255 * (1 - t)), 0, int(255 * t))     # blue -> red
+
+
+def _bar_speeds(bar_xy):
+    """Per-frame plate speed (px/frame) and a robust max (90th pct) for the colour scale."""
+    if bar_xy is None:
+        return None, 0.0
+    n = len(bar_xy)
+    speeds = np.zeros(n)
+    for i in range(1, n):
+        if not (np.any(np.isnan(bar_xy[i])) or np.any(np.isnan(bar_xy[i - 1]))):
+            speeds[i] = float(np.hypot(bar_xy[i, 0] - bar_xy[i - 1, 0],
+                                       bar_xy[i, 1] - bar_xy[i - 1, 1]))
+    moving = speeds[speeds > 0]
+    vmax = float(np.percentile(moving, 90)) if moving.size else 0.0
+    return speeds, vmax
+
+
+def _draw_bar_path(frame, bar_xy, f, speeds, vmax):
+    """Bar path coloured by speed: red (slow) -> green (fast). White dot = current plate centre."""
     if bar_xy is None:
         return
-    pts = [(int(bar_xy[i, 0]), int(bar_xy[i, 1])) for i in range(f + 1)
-           if not np.any(np.isnan(bar_xy[i]))]
-    if len(pts) >= 2:
-        cv2.polylines(frame, [np.array(pts, dtype=np.int32)], False, MAGENTA, 2)
+    pts, spd = [], []
+    for i in range(f + 1):
+        if not np.any(np.isnan(bar_xy[i])):
+            pts.append((int(bar_xy[i, 0]), int(bar_xy[i, 1])))
+            spd.append(speeds[i] if speeds is not None else 0.0)
+    for a, b, s in zip(pts, pts[1:], spd[1:]):
+        t = (s / vmax) if vmax > 0 else 0.0
+        cv2.line(frame, a, b, _speed_color(t), 2, cv2.LINE_AA)
     if pts:
-        cv2.circle(frame, pts[-1], 6, MAGENTA, -1)
+        cv2.circle(frame, pts[-1], 6, WHITE, -1)
 
 
 def _draw_badge(frame, f, rep_metrics, window):
