@@ -83,3 +83,65 @@ def sticking_point_pct(bar_y: np.ndarray, bottom: int, top: int) -> dict | None:
     i_local = lo + int(np.argmin(vel[lo:hi]))
     pct = (height[i_local] - height[0]) / rom * 100
     return {"pct_of_rom": round(float(pct), 0), "frame_idx": bottom + i_local}
+
+
+# ---------------------------------------------------------------- strength tier (typed weights)
+# DOTS coefficients are exact/published. The load-velocity %1RM model and the velocity->RPE
+# tables below are GENERALIZED and CALIBRATABLE — approximate, caveated, tuned per lifter later.
+
+_DOTS_COEF = {
+    "male": (-0.000001093, 0.0007391293, -0.1918759221, 24.0900756, -307.75076),
+    "female": (-0.0000010706, 0.0005158568, -0.1126655495, 13.6175032, -57.96288),
+}
+
+
+def dots(load_kg: float, bodyweight_kg: float, sex: str = "male") -> float | None:
+    """DOTS strength score for a SINGLE lift (not a 3-lift total). Exact published coefficients."""
+    if not load_kg or not bodyweight_kg:
+        return None
+    a, b, c, d, e = _DOTS_COEF.get(sex, _DOTS_COEF["male"])
+    bw = bodyweight_kg
+    denom = a * bw**4 + b * bw**3 + c * bw**2 + d * bw + e
+    if denom == 0:
+        return None
+    return round(load_kg * 500.0 / denom, 1)
+
+
+# generalized load-velocity %1RM model: pct = c + m*MCV   (CALIBRATABLE per lifter)
+_LV_MODEL = {"squat": (125.7, -85.7), "deadlift": (117.4, -96.8)}
+_E1RM_CONFIDENCE = {"squat": "medium", "deadlift": "low"}
+
+
+def est_1rm(load_kg: float, mcv: float | None, lift: str) -> dict | None:
+    """Estimated 1RM from a single set's mean concentric velocity. Generalized — calibratable.
+
+    Deadlift is flagged 'low' confidence (individual minimum-velocity-threshold variance is high).
+    """
+    if not load_kg or mcv is None or lift not in _LV_MODEL:
+        return None
+    c, m = _LV_MODEL[lift]
+    pct = max(40.0, min(100.0, c + m * mcv))
+    return {"e1rm_kg": round(load_kg / (pct / 100.0), 1),
+            "confidence": _E1RM_CONFIDENCE[lift]}
+
+
+def peak_power_w(load_kg: float, peak_velocity: float | None) -> float | None:
+    """Barbell peak power (W) ~= load * g * peak velocity. Ignores system mass/accel (approx)."""
+    if not load_kg or peak_velocity is None:
+        return None
+    return round(load_kg * 9.81 * peak_velocity, 1)
+
+
+# generalized MCV->RPE tables (ascending MCV, descending RPE)   (CALIBRATABLE)
+_RPE_TABLE = {
+    "squat": ([0.20, 0.25, 0.30, 0.40, 0.50], [10, 9, 8, 7, 6]),
+    "deadlift": ([0.10, 0.15, 0.20, 0.30, 0.40], [10, 9, 8, 7, 6]),
+}
+
+
+def velocity_to_rpe(mcv: float | None, lift: str) -> float | None:
+    """Estimated RPE from mean concentric velocity (slower = higher RPE). Generalized."""
+    if mcv is None or lift not in _RPE_TABLE:
+        return None
+    xs, rpe = _RPE_TABLE[lift]
+    return round(float(np.interp(mcv, xs, rpe)), 1)

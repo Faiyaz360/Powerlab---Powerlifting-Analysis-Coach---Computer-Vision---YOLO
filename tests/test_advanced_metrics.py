@@ -62,3 +62,38 @@ def test_sticking_point_finds_slow_patch():
 def test_sticking_point_none_when_no_rise():
     bar_y = np.zeros(9)
     assert am.sticking_point_pct(bar_y, 0, 8) is None
+
+
+# --- strength tier (C-tier) ---
+
+def test_dots_male_reference():
+    # 200 kg lift at 100 kg bodyweight, male coefficients
+    assert am.dots(200.0, 100.0, "male") == 123.1
+
+
+def test_dots_none_without_weights():
+    assert am.dots(0, 100.0) is None
+
+
+def test_est_1rm_squat_medium_confidence():
+    out = am.est_1rm(140.0, 0.5, "squat")
+    assert round(out["e1rm_kg"]) == 169
+    assert out["confidence"] == "medium"
+
+
+def test_est_1rm_deadlift_flagged_low():
+    out = am.est_1rm(200.0, 0.3, "deadlift")
+    assert out["confidence"] == "low"
+
+
+def test_est_1rm_none_without_velocity():
+    assert am.est_1rm(140.0, None, "squat") is None
+
+
+def test_peak_power():
+    assert am.peak_power_w(100.0, 1.0) == 981.0
+
+
+def test_velocity_to_rpe_squat():
+    assert am.velocity_to_rpe(0.30, "squat") == 8.0
+    assert am.velocity_to_rpe(0.45, "squat") == 6.5
