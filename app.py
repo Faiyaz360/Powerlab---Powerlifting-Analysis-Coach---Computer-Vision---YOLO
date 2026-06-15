@@ -8,14 +8,20 @@ from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 
+import cv2
 import gradio as gr
 import numpy as np
 
 from src import advanced_metrics as am
-from src import charts, confidence as conf, history, pipeline
+from src import charts, confidence as conf, history, media, pipeline, plate_dataset
 
 OUT_DIR = "output"
 DB_PATH = "data/history.db"
+
+# Two-click plate-marking prompts (the seed both steers the tracker and is saved as training data).
+SEED_PROMPT = "**Step 1 — click the plate CENTRE** on the frame above."
+SEED_EDGE = "**Step 2 — click the plate EDGE** (sets the size)."
+SEED_DONE = "✅ **Plate marked.** Press **Analyse** — or click again to redo."
 
 
 # ---------------------------------------------------------------- metric helpers
@@ -153,15 +159,95 @@ def _summary_record(a, result, adv, name, c=None, s=None,
     }
 
 
+# ---------------------------------------------------------------- seed (plate marking) helpers
+
+def _first_frame_rgb(video_path):
+    """First frame of the clip as an RGB array (for the click-to-mark picker), or None."""
+    cap = cv2.VideoCapture(str(video_path))
+    ok, frame = cap.read()
+    cap.release()
+    return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if ok else None
+
+
+def _draw_seed(frame_rgb, seed):
+    """Draw the in-progress mark (centre dot, and circle once the edge is set) on a copy."""
+    img = frame_rgb.copy()
+    cx, cy = seed.get("cx"), seed.get("cy")
+    if cx is not None:
+        cv2.circle(img, (int(cx), int(cy)), 5, (0, 255, 0), -1)
+        if seed.get("r"):
+            cv2.circle(img, (int(cx), int(cy)), int(seed["r"]), (0, 255, 0), 2)
+    return img
+
+
 # ---------------------------------------------------------------- callbacks
 
-def analyze(video_path, lift, bodyweight, sex, bar_load, progress=gr.Progress()):
+def on_upload(video_path):
+    """Transcode to a browser-safe codec if needed, show its first frame to mark the plate, and
+    size the trim sliders to the clip length."""
+    if not video_path:
+        return (None, None, None, {}, SEED_PROMPT, None,
+                gr.update(maximum=1, value=0), gr.update(maximum=1, value=1))
+    safe = media.browser_safe_video(video_path)
+    frame = _first_frame_rgb(safe)
+    dur = round(media.duration_s(safe), 1) or 1.0
+    # video_in, seed_img, frame0_state, seed_state, seed_instr, source_state, trim_start, trim_end
+    return (safe, frame, frame, {}, SEED_PROMPT, safe,
+            gr.update(maximum=dur, value=0.0), gr.update(maximum=dur, value=dur))
+
+
+def on_trim(source, start, end):
+    """Cut the clip to [start, end] (frame-accurate) and refresh the preview + plate-mark frame."""
+    if not source:
+        raise gr.Error("Upload a video first.")
+    if end <= start:
+        raise gr.Error("Trim end must be after the start.")
+    trimmed = media.trim(source, start, end)
+    frame = _first_frame_rgb(trimmed)
+    return trimmed, frame, frame, {}, SEED_PROMPT  # video_in, seed_img, frame0_state, seed_state, instr
+
+
+def on_seed_click(seed_state, frame0, evt: gr.SelectData):
+    """Two-click circle: 1st click = centre, 2nd = edge (radius). A 3rd click starts over."""
+    if frame0 is None:
+        return None, {}, SEED_PROMPT
+    x, y = int(evt.index[0]), int(evt.index[1])
+    s = dict(seed_state or {})
+    if not s or s.get("r"):                       # fresh start (no centre yet, or already complete)
+        s = {"cx": x, "cy": y}
+        instr = SEED_EDGE
+    else:                                         # have centre -> this click sets the radius
+        s["r"] = float(np.hypot(x - s["cx"], y - s["cy"]))
+        instr = SEED_DONE
+    return _draw_seed(frame0, s), s, instr
+
+
+def on_seed_reset(frame0):
+    return frame0, {}, SEED_PROMPT
+
+
+def analyze(video_path, lift, bodyweight, sex, bar_load, seed_state, frame0,
+            progress=gr.Progress()):
     if not video_path:
         raise gr.Error("Upload a lift video first.")
+    seed = seed_state or {}
+    if not seed.get("r"):
+        raise gr.Error("Mark the plate first: click its centre, then its edge.")
+    seed_tuple = (seed["cx"], seed["cy"], seed["r"])
+    name = Path(video_path).stem
+
+    # Save the mark as a YOLO training label (data flywheel) — best-effort, never blocks analysis.
+    if frame0 is not None:
+        try:
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            plate_dataset.save_label(frame0, seed["cx"], seed["cy"], seed["r"], name, stamp=stamp)
+        except Exception:
+            pass
+
     progress(0.1, desc="Loading video...")
     try:
         result = pipeline.analyze(
-            video_path, lift=lift, out_dir=OUT_DIR,
+            video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple,
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:
@@ -173,18 +259,16 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, progress=gr.Progress())
     adv = _advanced(a)
     c = _confidence(a)
     s = _strength(a, bodyweight, sex, bar_load)
-    name = Path(video_path).stem
     history.save_run(DB_PATH, _summary_record(a, result, adv, name, c, s,
                                               bodyweight, sex, bar_load))
-
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
     return (
         result["paths"]["annotated_video"],
         _verdict_md(a, c),
         _cards_md(a, adv),
+        _strength_md(s),
         charts.angle_curve(a),
         charts.velocity_bars(a.get("bar_velocity") or []),
-        _strength_md(s),
         report_md,
     )
 
@@ -213,20 +297,43 @@ def load_history(metric: str, lift: str):
 with gr.Blocks(title="Form Lab") as demo:
     gr.Markdown("# Form Lab — lift analysis")
     with gr.Tab("Analyse"):
+        # --- inputs: upload + controls on the left, plate-mark on the right (side by side) ---
         with gr.Row():
-            video_in = gr.Video(label="Your lift (side-on)")
-            lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
-            load_in = gr.Number(label="Bar load (kg)", value=None)
-        run_btn = gr.Button("Analyse", variant="primary")
+            with gr.Column(scale=1):
+                video_in = gr.Video(label="Upload (side-on)", height=360)
+                with gr.Row():
+                    trim_start = gr.Slider(0, 1, value=0, step=0.1, label="Trim start (s)")
+                    trim_end = gr.Slider(0, 1, value=1, step=0.1, label="Trim end (s)")
+                trim_btn = gr.Button("Apply trim", size="sm")
+                lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
+                load_in = gr.Number(label="Bar load (kg)", value=None)
+                run_btn = gr.Button("Analyse", variant="primary", size="lg")
+            with gr.Column(scale=1):
+                seed_img = gr.Image(label="Mark the plate: click centre, then edge",
+                                    type="numpy", interactive=True, sources=[], height=420)
+                seed_instr = gr.Markdown(SEED_PROMPT)
+                seed_reset = gr.Button("Reset mark", size="sm")
+
+        # --- results: verdict, then a compact annotated video beside the stat cards ---
         verdict_out = gr.Markdown()
         with gr.Row():
-            video_out = gr.Video(label="Annotated")
-            cards_out = gr.Markdown()
-        with gr.Row():
-            angle_out = gr.Plot(label="Joint angle")
-            vel_out = gr.Plot(label="Velocity per rep")
-        strength_out = gr.Markdown()
-        report_out = gr.Markdown()
+            with gr.Column(scale=2):
+                video_out = gr.Video(label="Annotated", autoplay=True, height=520)
+                gr.Markdown("Bar path: 🔵 slow → 🔴 fast")
+            with gr.Column(scale=3):
+                cards_out = gr.Markdown()
+                strength_out = gr.Markdown()
+
+        # --- extra detail tucked away so the main screen stays uncluttered ---
+        with gr.Accordion("Charts & full report", open=False):
+            with gr.Row():
+                angle_out = gr.Plot(label="Joint angle")
+                vel_out = gr.Plot(label="Velocity per rep")
+            report_out = gr.Markdown()
+
+        frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
+        seed_state = gr.State({})       # {cx, cy, r} being marked
+        source_state = gr.State(None)   # full transcoded clip (trim source, non-cumulative)
     with gr.Tab("History"):
         with gr.Row():
             metric_in = gr.Dropdown(["consistency", "velocity_loss", "mean_velocity"],
@@ -242,8 +349,16 @@ with gr.Blocks(title="Form Lab") as demo:
         gr.Markdown("_Bodyweight + sex feed DOTS / est-1RM / power / RPE. Set the bar load per "
                     "lift on the Analyse tab._")
 
-    run_btn.click(analyze, [video_in, lift_in, bw_in, sex_in, load_in],
-                  [video_out, verdict_out, cards_out, angle_out, vel_out, strength_out, report_out])
+    video_in.upload(on_upload, [video_in],
+                    [video_in, seed_img, frame0_state, seed_state, seed_instr,
+                     source_state, trim_start, trim_end])
+    trim_btn.click(on_trim, [source_state, trim_start, trim_end],
+                   [video_in, seed_img, frame0_state, seed_state, seed_instr])
+    seed_img.select(on_seed_click, [seed_state, frame0_state],
+                    [seed_img, seed_state, seed_instr])
+    seed_reset.click(on_seed_reset, [frame0_state], [seed_img, seed_state, seed_instr])
+    run_btn.click(analyze, [video_in, lift_in, bw_in, sex_in, load_in, seed_state, frame0_state],
+                  [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
 
 if __name__ == "__main__":
