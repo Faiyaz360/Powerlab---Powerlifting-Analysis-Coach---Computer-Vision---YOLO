@@ -29,6 +29,7 @@ S_MIN, V_MIN = 90, 60     # a plate is a saturated, bright colour (hue-agnostic 
 CIRCULARITY_MIN = 0.55    # contourArea / enclosing-circle area — rejects non-round blobs
 HUE_TOL = 18              # once locked onto the plate's hue, reject other-colour blobs (bg plate)
 MIN_PEAK_MS = 0.3         # a real concentric pull peaks above this; below = height drift, not a rep
+MATCH_MIN = 0.4           # template-match confidence (TM_CCOEFF_NORMED) below which we hold position
 _KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
 
 # (left, right) landmark slots whose midpoint sits near the plate on the camera side
@@ -38,13 +39,18 @@ _BAR_ANCHOR = {
 }
 
 
-def track_plate(video_path, pose: P.PoseResult, lift: str, plate_backend: str = "hsv", progress=None):
+def track_plate(video_path, pose: P.PoseResult, lift: str, plate_backend: str = "hsv",
+                progress=None, seed=None):
     """Per-frame plate centre (x, y) in pixels and radius. Gaps interpolated.
 
     ``plate_backend``: "hsv" (colour+shape, default) or "yolo" (trained detector, colour-agnostic
     — needs models/plate.pt; better on same-colour-background clips but a noisier signal).
+    ``seed``: optional (cx, cy, r) the user marked on frame 0 — locks the plate's colour and
+    anchors the jump-gate to the right plate from the start (initialisation, not per-frame).
     Returns (centers[n,2], radii[n]).
     """
+    if seed is not None:
+        return _track_from_seed(video_path, pose.num_frames, seed, progress)
     anchor = _anchor_series(pose, lift)
     cap = cv2.VideoCapture(str(video_path))
     h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -88,6 +94,53 @@ def track_plate(video_path, pose: P.PoseResult, lift: str, plate_backend: str = 
             progress(f)
     cap.release()
 
+    centers[:, 0] = _interp(centers[:, 0])
+    centers[:, 1] = _interp(centers[:, 1])
+    return centers, radii
+
+
+def _track_from_seed(video_path, n, seed, progress=None):
+    """Pure MANUAL bar track by TEMPLATE MATCHING the plate patch the user clicked on frame 0.
+
+    Matching the plate's appearance (logo/hub) locks the centre to a fixed point on the plate, so
+    it does NOT drift the way a colour-blob centroid does when a shin/hand partially occludes the
+    plate at the bottom of the lift. We search a window around the plate's previous position; if
+    the best match is weak (heavy occlusion) we hold position rather than jump. Radius is the
+    marked radius (a plate's on-screen size barely changes for a fixed side-on camera).
+    """
+    cap = cv2.VideoCapture(str(video_path))
+    scx, scy, sr = int(round(seed[0])), int(round(seed[1])), int(round(seed[2]))
+    centers = np.full((n, 2), np.nan)
+    radii = np.full(n, float(sr))
+    template, prev = None, (float(scx), float(scy))
+    f = 0
+    while True:
+        ok, frame = cap.read()
+        if not ok or f >= n:
+            break
+        h, w = frame.shape[:2]
+        if f == 0:
+            x0, y0 = max(0, scx - sr), max(0, scy - sr)
+            x1, y1 = min(w, scx + sr), min(h, scy + sr)
+            template = frame[y0:y1, x0:x1].copy()
+            centers[f] = (scx, scy)
+        elif template is not None and template.size:
+            th, tw = template.shape[:2]
+            pad = int(sr * 2.0)                                  # search a couple of radii around prev
+            sx0, sy0 = max(0, int(prev[0]) - tw // 2 - pad), max(0, int(prev[1]) - th // 2 - pad)
+            sx1, sy1 = min(w, int(prev[0]) + tw // 2 + pad), min(h, int(prev[1]) + th // 2 + pad)
+            win = frame[sy0:sy1, sx0:sx1]
+            if win.shape[0] >= th and win.shape[1] >= tw:
+                _, score, _, loc = cv2.minMaxLoc(
+                    cv2.matchTemplate(win, template, cv2.TM_CCOEFF_NORMED))
+                if score >= MATCH_MIN:                          # else: occluded -> hold (leave NaN)
+                    cx, cy = sx0 + loc[0] + tw / 2.0, sy0 + loc[1] + th / 2.0
+                    centers[f] = (cx, cy)
+                    prev = (cx, cy)
+        f += 1
+        if progress:
+            progress(f)
+    cap.release()
     centers[:, 0] = _interp(centers[:, 0])
     centers[:, 1] = _interp(centers[:, 1])
     return centers, radii
@@ -175,6 +228,13 @@ def scale_from_radii(radii: np.ndarray):
     if len(valid) == 0:
         return None
     return PLATE_DIAMETER_M / (2.0 * float(np.median(valid)))
+
+
+def scale_from_seed(radius_px):
+    """Metres per pixel from a user-marked plate radius — ground truth (pure, unit-tested)."""
+    if not radius_px or float(radius_px) <= 0:
+        return None
+    return PLATE_DIAMETER_M / (2.0 * float(radius_px))
 
 
 def velocity_per_rep(bar_xy, reps, fps, scale):

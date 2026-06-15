@@ -13,7 +13,8 @@ from . import report as reportmod
 
 
 def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
-            backend: str = "yolo", model_complexity: int = 2, plate_backend: str = "hsv") -> dict:
+            backend: str = "yolo", model_complexity: int = 2, plate_backend: str = "hsv",
+            seed=None) -> dict:
     """Run pose -> metrics -> faults -> coaching -> annotated video + report.
 
     ``backend``: "mediapipe" (CPU) or "yolo" (YOLO11-pose on GPU, sharper landmarks).
@@ -40,8 +41,8 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     cues = coachmod.coach_from_issues(faults["issue_list"], analysis["rep_count"])
 
     # bar tracking + velocity (VBT) — track the plate centre by colour, segment reps from the bar
-    bar_xy, radii = barmod.track_plate(video_path, pose, lift, plate_backend=plate_backend)
-    scale = barmod.scale_from_radii(radii)
+    bar_xy, radii = barmod.track_plate(video_path, pose, lift, plate_backend=plate_backend, seed=seed)
+    scale = barmod.scale_from_seed(seed[2]) if seed else barmod.scale_from_radii(radii)
     bar_reps = barmod.detect_bar_reps(bar_xy, pose.fps, scale)
     analysis["bar_xy"] = bar_xy
     analysis["scale_m_per_px"] = scale
