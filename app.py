@@ -19,9 +19,42 @@ OUT_DIR = "output"
 DB_PATH = "data/history.db"
 
 # Two-click plate-marking prompts (the seed both steers the tracker and is saved as training data).
-SEED_PROMPT = "**Step 1 — click the plate CENTRE** on the frame above."
-SEED_EDGE = "**Step 2 — click the plate EDGE** (sets the size)."
-SEED_DONE = "✅ **Plate marked.** Press **Analyse** — or click again to redo."
+SEED_INSTR = ("**Tap the plate** to place the circle, then **Plate radius** sizes it "
+              "(X / Y sliders fine-tune).")
+
+# Athletic-blue, system-font theme; follows the device's light/dark setting automatically.
+THEME = gr.themes.Soft(
+    primary_hue="blue",
+    secondary_hue="blue",
+    neutral_hue="slate",
+    radius_size=gr.themes.sizes.radius_lg,
+    font=["-apple-system", "BlinkMacSystemFont", "SF Pro Text", "Segoe UI", "Roboto", "sans-serif"],
+)
+
+# Apple-clean polish: a responsive stat-card grid, a semantic verdict banner, centred video.
+CSS = """
+footer {display: none !important;}
+.gradio-container {max-width: 920px !important; margin: 0 auto !important; min-height: 100vh;}
+.fl-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;}
+.fl-card {background: var(--block-background-fill); border: 1px solid var(--border-color-primary);
+          border-radius: 16px; padding: 14px 16px;}
+.fl-label {display: block; font-size: 12px; color: var(--body-text-color-subdued); margin-bottom: 4px;}
+.fl-value {font-size: 25px; font-weight: 600; color: var(--body-text-color); line-height: 1.1;}
+.fl-unit {font-size: 13px; color: var(--body-text-color-subdued); font-weight: 400;}
+.fl-verdict {border-radius: 16px; padding: 14px 16px; display: flex; align-items: center; gap: 12px;
+             font-size: 17px; font-weight: 600; margin: 4px 0;}
+.fl-verdict .fl-vicon {font-size: 22px; line-height: 1;}
+.fl-sub {display: block; font-size: 12px; font-weight: 400; opacity: .8; margin-top: 2px;}
+.fl-ok {background: rgba(34,197,94,.13); color: #16a34a;}
+.fl-warn {background: rgba(245,158,11,.15); color: #d97706;}
+.fl-bad {background: rgba(239,68,68,.13); color: #dc2626;}
+.fl-hint {color: var(--body-text-color-subdued); font-size: 14px; padding: 8px 2px;}
+.fl-video-wrap {max-width: 460px; margin: 0 auto;}
+.fl-cap {text-align: center; font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px;}
+.fl-sec {font-size: 13px; font-weight: 600; color: var(--body-text-color-subdued);
+         margin: 14px 0 6px; letter-spacing: .02em;}
+.fl-narrow {max-width: 560px; margin: 0 auto;}
+"""
 
 
 # ---------------------------------------------------------------- metric helpers
@@ -91,49 +124,62 @@ def _confidence(a: dict):
     return conf.assess(SimpleNamespace(landmarks=lm))
 
 
-# ---------------------------------------------------------------- rendering helpers
+# ---------------------------------------------------------------- HTML rendering (stat cards)
 
-def _fmt(value, suffix="") -> str:
-    return f"{value}{suffix}" if value is not None else "—"
+def _card(label, value, unit="") -> str:
+    """One stat card: muted label above, big number below (— when the value is missing)."""
+    if value is None:
+        inner = "<span class='fl-value'>—</span>"
+    else:
+        u = f"<span class='fl-unit'> {unit}</span>" if unit else ""
+        inner = f"<span class='fl-value'>{value}{u}</span>"
+    return f"<div class='fl-card'><span class='fl-label'>{label}</span>{inner}</div>"
 
 
-def _verdict_md(a: dict, c) -> str:
-    """Confidence-gated verdict — never a confident wrong call when the camera is off-axis."""
+def _verdict_html(a: dict, c) -> str:
+    """Confidence-gated verdict banner — never a confident wrong call when the camera is off-axis."""
     if c and not c["axis_ok"]:
-        return f"### ⚠ Can't judge depth — {c['reason']}"
+        return (f"<div class='fl-verdict fl-warn'><span class='fl-vicon'>⚠</span>"
+                f"<div>Can't judge depth<span class='fl-sub'>{c['reason']}</span></div></div>")
     if a["lift"] == "squat":
         ok = any(r.get("depth_pass") for r in a.get("rep_metrics") or [])
         label = "Good depth" if ok else "High — missed depth"
     else:
         ok = any(r.get("lockout_pass") for r in a.get("rep_metrics") or [])
         label = "Locked out" if ok else "Incomplete lockout"
-    note = f" · {c['level']} confidence" if c else ""
-    return f"### {'✅' if ok else '❌'} {label}{note}"
+    cls, icon = ("fl-ok", "✓") if ok else ("fl-bad", "✗")
+    sub = f"{c['level']} confidence" if c else ""
+    return (f"<div class='fl-verdict {cls}'><span class='fl-vicon'>{icon}</span>"
+            f"<div>{label}<span class='fl-sub'>{sub}</span></div></div>")
 
 
-def _cards_md(a: dict, adv: dict) -> str:
+def _cards_html(a: dict, adv: dict) -> str:
     mcv, _ = _first_velocity(a)
-    return (
-        f"**Reps:** {a['rep_count']}  \n"
-        f"**Mean velocity:** {_fmt(mcv, ' m/s')}  \n"
-        f"**Consistency:** {_fmt(adv['consistency'], '%')}  \n"
-        f"**Velocity loss:** {_fmt(adv['vloss'], '%')}  \n"
-        f"**Peak bar drift:** {_fmt(adv['peak_drift_cm'], ' cm')}  \n"
-        f"**Sticking point:** {_fmt(adv['sticking_pct'], '% of ascent')}"
-    )
+    cards = [
+        _card("Reps", a["rep_count"]),
+        _card("Mean velocity", mcv, "m/s"),
+        _card("Consistency", adv["consistency"], "%"),
+        _card("Velocity loss", adv["vloss"], "%"),
+        _card("Peak bar drift", adv["peak_drift_cm"], "cm"),
+        _card("Sticking point", adv["sticking_pct"], "% asc"),
+    ]
+    return f"<div class='fl-grid'>{''.join(cards)}</div>"
 
 
-def _strength_md(s) -> str:
+def _strength_html(s) -> str:
     if not s:
-        return "_Enter bodyweight (Settings) and bar load to see strength scores._"
+        return ("<div class='fl-hint'>Enter bodyweight (Settings) and a bar load to unlock "
+                "strength scores.</div>")
     e = s["e1rm"]
-    e1 = f"{e['e1rm_kg']} kg ({e['confidence']} conf)" if e else "—"
-    return (
-        f"**DOTS:** {_fmt(s['dots'])}  \n"
-        f"**Est. 1RM:** {e1}  \n"
-        f"**Peak power:** {_fmt(s['power'], ' W')}  \n"
-        f"**Est. RPE:** {_fmt(s['rpe'])}"
-    )
+    e1_val = e["e1rm_kg"] if e else None
+    e1_unit = f"kg · {e['confidence']}" if e else ""
+    cards = [
+        _card("DOTS", s["dots"]),
+        _card("Est. 1RM", e1_val, e1_unit),
+        _card("Peak power", s["power"], "W"),
+        _card("Est. RPE", s["rpe"]),
+    ]
+    return f"<div class='fl-grid'>{''.join(cards)}</div>"
 
 
 def _summary_record(a, result, adv, name, c=None, s=None,
@@ -169,78 +215,86 @@ def _first_frame_rgb(video_path):
     return cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) if ok else None
 
 
-def _draw_seed(frame_rgb, seed):
-    """Draw the in-progress mark (centre dot, and circle once the edge is set) on a copy."""
+def _draw_reticle(frame_rgb, cx, cy, r):
+    """Semi-transparent blue disk + outline + white crosshair — the targeting reticle the user
+    lines up with the plate (centre crosshair + sized circle)."""
+    r = max(1, int(r))
     img = frame_rgb.copy()
-    cx, cy = seed.get("cx"), seed.get("cy")
-    if cx is not None:
-        cv2.circle(img, (int(cx), int(cy)), 5, (0, 255, 0), -1)
-        if seed.get("r"):
-            cv2.circle(img, (int(cx), int(cy)), int(seed["r"]), (0, 255, 0), 2)
+    overlay = img.copy()
+    cv2.circle(overlay, (cx, cy), r, (37, 138, 221), -1)
+    img = cv2.addWeighted(overlay, 0.22, img, 0.78, 0)
+    cv2.circle(img, (cx, cy), r, (37, 138, 221), 2)
+    cv2.line(img, (cx - 14, cy), (cx + 14, cy), (255, 255, 255), 1)
+    cv2.line(img, (cx, cy - 14), (cx, cy + 14), (255, 255, 255), 1)
+    cv2.circle(img, (cx, cy), 3, (255, 255, 255), -1)
     return img
+
+
+def _reticle_view(frame0, cx, cy, r):
+    """Frame with the reticle drawn at (cx, cy, r), or None if there's no frame yet."""
+    if frame0 is None:
+        return None
+    return _draw_reticle(frame0, int(cx), int(cy), int(r))
 
 
 # ---------------------------------------------------------------- callbacks
 
 def on_upload(video_path):
-    """Transcode to a browser-safe codec if needed, show its first frame to mark the plate, and
-    size the trim sliders to the clip length."""
+    """Transcode if needed, show the first frame with a centred reticle, and size every slider."""
     if not video_path:
-        return (None, None, None, {}, SEED_PROMPT, None,
-                gr.update(maximum=1, value=0), gr.update(maximum=1, value=1))
+        return (None, None, None, SEED_INSTR, None,
+                gr.update(maximum=1, value=0), gr.update(maximum=1, value=1),
+                gr.update(), gr.update(), gr.update())
     safe = media.browser_safe_video(video_path)
     frame = _first_frame_rgb(safe)
     dur = round(media.duration_s(safe), 1) or 1.0
-    # video_in, seed_img, frame0_state, seed_state, seed_instr, source_state, trim_start, trim_end
-    return (safe, frame, frame, {}, SEED_PROMPT, safe,
-            gr.update(maximum=dur, value=0.0), gr.update(maximum=dur, value=dur))
+    h, w = (frame.shape[0], frame.shape[1]) if frame is not None else (480, 640)
+    cx, cy, r = w // 2, h // 2, round(h * 0.12)
+    # video_in, seed_img, frame0_state, seed_instr, source_state, trim_start, trim_end, cx, cy, radius
+    return (safe, _reticle_view(frame, cx, cy, r), frame, SEED_INSTR, safe,
+            gr.update(maximum=dur, value=0.0), gr.update(maximum=dur, value=dur),
+            gr.update(maximum=w, value=cx), gr.update(maximum=h, value=cy),
+            gr.update(maximum=max(20, h // 2), value=r))
 
 
-def on_trim(source, start, end):
-    """Cut the clip to [start, end] (frame-accurate) and refresh the preview + plate-mark frame."""
+def on_trim(source, start, end, cx, cy, r):
+    """Cut the clip to [start, end] (frame-accurate) and redraw the reticle on the new frame."""
     if not source:
         raise gr.Error("Upload a video first.")
     if end <= start:
         raise gr.Error("Trim end must be after the start.")
     trimmed = media.trim(source, start, end)
     frame = _first_frame_rgb(trimmed)
-    return trimmed, frame, frame, {}, SEED_PROMPT  # video_in, seed_img, frame0_state, seed_state, instr
+    return trimmed, _reticle_view(frame, cx, cy, r), frame  # video_in, seed_img, frame0_state
 
 
-def on_seed_click(seed_state, frame0, evt: gr.SelectData):
-    """Two-click circle: 1st click = centre, 2nd = edge (radius). A 3rd click starts over."""
-    if frame0 is None:
-        return None, {}, SEED_PROMPT
+def on_reticle(frame0, cx, cy, r):
+    """Redraw the reticle as the centre / radius sliders move."""
+    return _reticle_view(frame0, cx, cy, r)
+
+
+def on_tap(frame0, radius, evt: gr.SelectData):
+    """Tap the image to place the plate centre there (touch-friendly); syncs the X / Y sliders."""
+    if frame0 is None or evt.index is None:
+        return gr.update(), gr.update(), gr.update()
     x, y = int(evt.index[0]), int(evt.index[1])
-    s = dict(seed_state or {})
-    if not s or s.get("r"):                       # fresh start (no centre yet, or already complete)
-        s = {"cx": x, "cy": y}
-        instr = SEED_EDGE
-    else:                                         # have centre -> this click sets the radius
-        s["r"] = float(np.hypot(x - s["cx"], y - s["cy"]))
-        instr = SEED_DONE
-    return _draw_seed(frame0, s), s, instr
+    return _reticle_view(frame0, x, y, radius), gr.update(value=x), gr.update(value=y)
 
 
-def on_seed_reset(frame0):
-    return frame0, {}, SEED_PROMPT
-
-
-def analyze(video_path, lift, bodyweight, sex, bar_load, seed_state, frame0,
+def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
             progress=gr.Progress()):
     if not video_path:
         raise gr.Error("Upload a lift video first.")
-    seed = seed_state or {}
-    if not seed.get("r"):
-        raise gr.Error("Mark the plate first: click its centre, then its edge.")
-    seed_tuple = (seed["cx"], seed["cy"], seed["r"])
+    if not radius or radius <= 0:
+        raise gr.Error("Align the plate circle first (use the X / Y / radius sliders).")
+    seed_tuple = (cx, cy, radius)
     name = Path(video_path).stem
 
     # Save the mark as a YOLO training label (data flywheel) — best-effort, never blocks analysis.
     if frame0 is not None:
         try:
             stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-            plate_dataset.save_label(frame0, seed["cx"], seed["cy"], seed["r"], name, stamp=stamp)
+            plate_dataset.save_label(frame0, cx, cy, radius, name, stamp=stamp)
         except Exception:
             pass
 
@@ -264,9 +318,9 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, seed_state, frame0,
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
     return (
         result["paths"]["annotated_video"],
-        _verdict_md(a, c),
-        _cards_md(a, adv),
-        _strength_md(s),
+        _verdict_html(a, c),
+        _cards_html(a, adv),
+        _strength_html(s),
         charts.angle_curve(a),
         charts.velocity_bars(a.get("bar_velocity") or []),
         report_md,
@@ -284,7 +338,7 @@ def load_history(metric: str, lift: str):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(5, 2.6))
-        ax.plot(range(len(series)), [v for _, v in series], marker="o", color="#1D9E75")
+        ax.plot(range(len(series)), [v for _, v in series], marker="o", color="#378ADD")
         ax.set_xticks(range(len(series)))
         ax.set_xticklabels([t[5:10] for t, _ in series], rotation=45, fontsize=8)
         ax.set_ylabel(metric)
@@ -295,34 +349,36 @@ def load_history(metric: str, lift: str):
 # ---------------------------------------------------------------- UI
 
 with gr.Blocks(title="Form Lab") as demo:
-    gr.Markdown("# Form Lab — lift analysis")
+    gr.Markdown("# Form Lab")
     with gr.Tab("Analyse"):
-        # --- inputs: upload + controls on the left, plate-mark on the right (side by side) ---
-        with gr.Row():
-            with gr.Column(scale=1):
-                video_in = gr.Video(label="Upload (side-on)", height=360)
+        # --- inputs: one clean centred column (mobile-first; scales to desktop) ---
+        with gr.Column(elem_classes="fl-narrow"):
+            video_in = gr.Video(label="Upload (side-on)", height=260)
+            with gr.Accordion("Trim clip (optional)", open=False):
                 with gr.Row():
-                    trim_start = gr.Slider(0, 1, value=0, step=0.1, label="Trim start (s)")
-                    trim_end = gr.Slider(0, 1, value=1, step=0.1, label="Trim end (s)")
+                    trim_start = gr.Slider(0, 1, value=0, step=0.1, label="Start (s)")
+                    trim_end = gr.Slider(0, 1, value=1, step=0.1, label="End (s)")
                 trim_btn = gr.Button("Apply trim", size="sm")
+            seed_img = gr.Image(label="Mark the plate — align the circle", type="numpy",
+                                interactive=False, height=360)
+            with gr.Row():
+                seed_cx = gr.Slider(0, 1, value=0, step=1, label="Centre X")
+                seed_cy = gr.Slider(0, 1, value=0, step=1, label="Centre Y")
+            seed_radius = gr.Slider(10, 300, value=60, step=1, label="Plate radius")
+            seed_instr = gr.Markdown(SEED_INSTR)
+            with gr.Row():
                 lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
                 load_in = gr.Number(label="Bar load (kg)", value=None)
-                run_btn = gr.Button("Analyse", variant="primary", size="lg")
-            with gr.Column(scale=1):
-                seed_img = gr.Image(label="Mark the plate: click centre, then edge",
-                                    type="numpy", interactive=True, sources=[], height=420)
-                seed_instr = gr.Markdown(SEED_PROMPT)
-                seed_reset = gr.Button("Reset mark", size="sm")
+            run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
-        # --- results: verdict, then a compact annotated video beside the stat cards ---
-        verdict_out = gr.Markdown()
-        with gr.Row():
-            with gr.Column(scale=2):
-                video_out = gr.Video(label="Annotated", autoplay=True, height=520)
-                gr.Markdown("Bar path: 🔵 slow → 🔴 fast")
-            with gr.Column(scale=3):
-                cards_out = gr.Markdown()
-                strength_out = gr.Markdown()
+        # --- results: verdict banner, centred video, then the stat-card grid (auto-reflows) ---
+        verdict_out = gr.HTML(elem_classes="fl-narrow")
+        with gr.Column(elem_classes="fl-video-wrap"):
+            video_out = gr.Video(label="Annotated", show_label=False, autoplay=True, height=460)
+            gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
+        cards_out = gr.HTML()
+        gr.HTML("<div class='fl-sec'>STRENGTH</div>")
+        strength_out = gr.HTML()
 
         # --- extra detail tucked away so the main screen stays uncluttered ---
         with gr.Accordion("Charts & full report", open=False):
@@ -332,9 +388,8 @@ with gr.Blocks(title="Form Lab") as demo:
             report_out = gr.Markdown()
 
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
-        seed_state = gr.State({})       # {cx, cy, r} being marked
         source_state = gr.State(None)   # full transcoded clip (trim source, non-cumulative)
-    with gr.Tab("History"):
+    with gr.Tab("History") as history_tab:
         with gr.Row():
             metric_in = gr.Dropdown(["consistency", "velocity_loss", "mean_velocity"],
                                     value="consistency", label="Trend metric")
@@ -350,17 +405,19 @@ with gr.Blocks(title="Form Lab") as demo:
                     "lift on the Analyse tab._")
 
     video_in.upload(on_upload, [video_in],
-                    [video_in, seed_img, frame0_state, seed_state, seed_instr,
-                     source_state, trim_start, trim_end])
-    trim_btn.click(on_trim, [source_state, trim_start, trim_end],
-                   [video_in, seed_img, frame0_state, seed_state, seed_instr])
-    seed_img.select(on_seed_click, [seed_state, frame0_state],
-                    [seed_img, seed_state, seed_instr])
-    seed_reset.click(on_seed_reset, [frame0_state], [seed_img, seed_state, seed_instr])
-    run_btn.click(analyze, [video_in, lift_in, bw_in, sex_in, load_in, seed_state, frame0_state],
+                    [video_in, seed_img, frame0_state, seed_instr, source_state,
+                     trim_start, trim_end, seed_cx, seed_cy, seed_radius])
+    trim_btn.click(on_trim, [source_state, trim_start, trim_end, seed_cx, seed_cy, seed_radius],
+                   [video_in, seed_img, frame0_state])
+    for _sld in (seed_cx, seed_cy, seed_radius):
+        _sld.release(on_reticle, [frame0_state, seed_cx, seed_cy, seed_radius], seed_img)
+    seed_img.select(on_tap, [frame0_state, seed_radius], [seed_img, seed_cx, seed_cy])
+    run_btn.click(analyze,
+                  [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius, frame0_state],
                   [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
+    history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
 
 if __name__ == "__main__":
     history.init_db(DB_PATH)
-    demo.launch()
+    demo.launch(theme=THEME, css=CSS)
