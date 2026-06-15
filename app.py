@@ -4,6 +4,7 @@ Run:  .\.venv\Scripts\python.exe app.py   then open http://127.0.0.1:7860
 """
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -17,6 +18,10 @@ from src import charts, confidence as conf, history, media, pipeline, plate_data
 
 OUT_DIR = "output"
 DB_PATH = "data/history.db"
+
+# Pose backend: YOLO (GPU) locally; MediaPipe (CPU) on Hugging Face Spaces (SPACE_ID is set there).
+# Override either way with the POSE_BACKEND env var.
+POSE_BACKEND = os.environ.get("POSE_BACKEND") or ("mediapipe" if os.environ.get("SPACE_ID") else "yolo")
 
 # Two-click plate-marking prompts (the seed both steers the tracker and is saved as training data).
 SEED_INSTR = ("**Tap the plate** to place the circle, then **Plate radius** sizes it "
@@ -301,7 +306,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
     progress(0.1, desc="Loading video...")
     try:
         result = pipeline.analyze(
-            video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple,
+            video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple, backend=POSE_BACKEND,
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:
