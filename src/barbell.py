@@ -29,7 +29,7 @@ S_MIN, V_MIN = 90, 60     # a plate is a saturated, bright colour (hue-agnostic 
 CIRCULARITY_MIN = 0.55    # contourArea / enclosing-circle area — rejects non-round blobs
 HUE_TOL = 18              # once locked onto the plate's hue, reject other-colour blobs (bg plate)
 MIN_PEAK_MS = 0.3         # a real concentric pull peaks above this; below = height drift, not a rep
-MATCH_MIN = 0.4           # template-match confidence (TM_CCOEFF_NORMED) below which we hold position
+MATCH_MIN = 0.45          # template-match confidence (TM_CCOEFF_NORMED) below which we hold position
 _KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
 
 # (left, right) landmark slots whose midpoint sits near the plate on the camera side
@@ -126,7 +126,7 @@ def _track_from_seed(video_path, n, seed, progress=None):
             centers[f] = (scx, scy)
         elif template is not None and template.size:
             th, tw = template.shape[:2]
-            pad = int(sr * 2.0)                                  # search a couple of radii around prev
+            pad = int(sr * 1.2)                                  # tight: a plate moves little frame-to-frame
             sx0, sy0 = max(0, int(prev[0]) - tw // 2 - pad), max(0, int(prev[1]) - th // 2 - pad)
             sx1, sy1 = min(w, int(prev[0]) + tw // 2 + pad), min(h, int(prev[1]) + th // 2 + pad)
             win = frame[sy0:sy1, sx0:sx1]
@@ -141,8 +141,8 @@ def _track_from_seed(video_path, n, seed, progress=None):
         if progress:
             progress(f)
     cap.release()
-    centers[:, 0] = _interp(centers[:, 0])
-    centers[:, 1] = _interp(centers[:, 1])
+    centers[:, 0] = _fill_hold(centers[:, 0])      # hold through gaps (don't slide down at lockout)
+    centers[:, 1] = _fill_hold(centers[:, 1])
     return centers, radii
 
 
@@ -295,6 +295,25 @@ def _interp(series):
     if good.sum() == 0:
         return s
     s[~good] = np.interp(idx[~good], idx[good], s[good])
+    return s
+
+
+def _fill_hold(series):
+    """Carry the last good value forward across gaps (back-fill any leading gap). Holding a lost
+    track in place is more honest than interpolating toward the next sighting — it keeps the plate
+    at lockout instead of sliding it down before the descent (and reads zero velocity there, which
+    is correct)."""
+    s = series.copy()
+    last = None
+    for i in range(len(s)):
+        if np.isnan(s[i]):
+            if last is not None:
+                s[i] = last
+        else:
+            last = s[i]
+    good = np.where(~np.isnan(s))[0]
+    if len(good):
+        s[: good[0]] = s[good[0]]                   # back-fill any leading NaNs with the first sighting
     return s
 
 
