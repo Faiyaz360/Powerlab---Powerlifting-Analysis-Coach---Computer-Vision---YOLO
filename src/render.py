@@ -68,7 +68,8 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     reps = analysis["reps"]
     rep_metrics = analysis["rep_metrics"]
     bar_xy = analysis.get("bar_xy")
-    clean = analysis.get("clean", True)   # clean = bar-path-only overlay (WL-style); else full skeleton
+    # skeleton overlay: "side" = camera-side joints (default), "full" = all joints, "off" = bar-path only
+    skeleton = analysis.get("skeleton", "side")
 
     if side == "left":
         chain = [P.L_SHOULDER, P.L_HIP, P.L_KNEE, P.L_ANKLE, P.L_FOOT]
@@ -93,10 +94,13 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             break
         if f < pose.num_frames:
             cur_start = max([e for e in rep_end_frames if e <= f], default=0)  # current-rep boundary
-            if not clean:                                  # detailed view: full skeleton + joint angle
+            if skeleton != "off":
                 region = _body_region(lm, f)
-                _draw_full_skeleton(frame, lm, f, region)
-                _draw_skeleton(frame, lm, f, chain, region)
+                if skeleton == "full":                     # all points (front view / detailed)
+                    _draw_full_skeleton(frame, lm, f, region)
+                    _draw_skeleton(frame, lm, f, chain, region)
+                else:                                      # "side": camera-side sagittal points only
+                    _draw_side_skeleton(frame, lm, f, side, region)
                 _draw_angle(frame, lm, f, joint_idx, primary)
             _draw_bar_path(frame, bar_xy, f, bar_speeds, bar_vmax, cur_start)
             done = sum(1 for e in rep_end_frames if e <= f)
@@ -123,6 +127,15 @@ _BODY_EDGES = [
 ]
 _BODY_JOINTS = sorted({s for e in _BODY_EDGES for s in e})
 
+# Camera-side sagittal chain (head -> shoulder -> elbow/wrist + shoulder -> hip -> knee -> ankle -> foot).
+# These are the "sideways points" that matter for a side-on squat/deadlift, without far-side clutter.
+_SIDE_EDGES_L = [(P.NOSE, P.L_SHOULDER), (P.L_SHOULDER, P.L_ELBOW), (P.L_ELBOW, P.L_WRIST),
+                 (P.L_SHOULDER, P.L_HIP), (P.L_HIP, P.L_KNEE), (P.L_KNEE, P.L_ANKLE),
+                 (P.L_ANKLE, P.L_HEEL), (P.L_HEEL, P.L_FOOT), (P.L_ANKLE, P.L_FOOT)]
+_SIDE_EDGES_R = [(P.NOSE, P.R_SHOULDER), (P.R_SHOULDER, P.R_ELBOW), (P.R_ELBOW, P.R_WRIST),
+                 (P.R_SHOULDER, P.R_HIP), (P.R_HIP, P.R_KNEE), (P.R_KNEE, P.R_ANKLE),
+                 (P.R_ANKLE, P.R_HEEL), (P.R_HEEL, P.R_FOOT), (P.R_ANKLE, P.R_FOOT)]
+
 
 def _draw_full_skeleton(frame, lm, f, region):
     """Faint full-body skeleton from every available landmark (MediaPipe fills all 33; YOLO/RTMPose
@@ -143,6 +156,22 @@ def _draw_skeleton(frame, lm, f, chain, region):
         if a and b:
             cv2.line(frame, a, b, GREEN, 3)
     for p in pts:
+        if p:
+            cv2.circle(frame, p, 6, ORANGE, -1)
+
+
+def _draw_side_skeleton(frame, lm, f, side, region):
+    """Camera-side joints only (head, shoulder, elbow, wrist, hip, knee, ankle, heel, foot) — the
+    'sideways points' for a side-on squat/deadlift, without the far-side limbs cluttering the view."""
+    edges = _SIDE_EDGES_L if side == "left" else _SIDE_EDGES_R
+    pts = {}
+    for a, b in edges:
+        pts.setdefault(a, _xy_ok(lm, f, a, region))
+        pts.setdefault(b, _xy_ok(lm, f, b, region))
+    for a, b in edges:
+        if pts[a] and pts[b]:
+            cv2.line(frame, pts[a], pts[b], GREEN, 3, cv2.LINE_AA)
+    for p in pts.values():
         if p:
             cv2.circle(frame, p, 6, ORANGE, -1)
 

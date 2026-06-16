@@ -320,7 +320,7 @@ def on_tap(frame0, cx, cy, r, tap_state, evt: gr.SelectData):
 
 
 @spaces.GPU(duration=120)
-def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, detail,
+def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, skel,
             progress=gr.Progress()):
     if not video_path:
         raise gr.Error("Upload a lift video first.")
@@ -341,7 +341,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
     try:
         result = pipeline.analyze(
             video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple, backend=POSE_BACKEND,
-            clean=not detail,
+            skeleton={"Side points": "side", "All points": "full", "None": "off"}.get(skel, "side"),
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:
@@ -411,7 +411,8 @@ with gr.Blocks(title="Form Lab") as demo:
             with gr.Row():
                 lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
                 load_in = gr.Number(label="Bar load (kg)", value=None)
-            detail_in = gr.Checkbox(value=False, label="Detailed skeleton view (off = clean bar-path overlay)")
+            skel_in = gr.Radio(["Side points", "All points", "None"], value="Side points",
+                               label="Skeleton overlay (Side = side-view joints; None = bar path only)")
             run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
         # --- results: verdict banner, centred video, then the stat-card grid (auto-reflows) ---
@@ -463,7 +464,7 @@ with gr.Blocks(title="Form Lab") as demo:
                     [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
     run_btn.click(analyze,
                   [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
-                   frame0_state, detail_in],
+                   frame0_state, skel_in],
                   [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out,
                    reps_table])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])

@@ -108,12 +108,14 @@ def _track_from_seed(video_path, n, seed, progress=None):
 
     We scatter a few strong feature points across the marked plate disc and follow each one
     frame-to-frame with pyramidal optical flow (cv2.calcOpticalFlowPyrLK). A forward-backward
-    consistency check throws out points the flow lost, and the plate centre is the MEDIAN of the
-    survivors, so a handful of bad points can't drag it. If too many points are lost (the plate is
-    occluded at lockout) we hold the last centre and re-acquire when it reappears. This is the
-    validated approach for barbell paths (Nagao 2022, ICC ~0.99 vs motion-capture) and, unlike
-    template matching, it doesn't slide along the plate rim or snap onto the body. Radius is the
-    marked radius (a side-on plate's on-screen size barely changes). The path is 1-euro smoothed.
+    consistency check throws out points the flow lost, then the centre MOVES BY THE MEDIAN FLOW of
+    the survivors (not their median position) — so it rides the plate rigidly from where the user
+    marked it, and re-seeding fresh points after a floor bounce can't shift the baseline between
+    reps. If too many points are lost (the plate is occluded at lockout) we hold the last centre and
+    re-acquire when it reappears. This is the validated approach for barbell paths (Nagao 2022, ICC
+    ~0.99 vs motion-capture) and, unlike template matching, it doesn't slide along the rim or snap
+    onto the body. Radius is the marked radius (a side-on plate's on-screen size barely changes).
+    The path is 1-euro smoothed.
     """
     cap = cv2.VideoCapture(str(video_path))
     scx, scy, sr = float(seed[0]), float(seed[1]), int(round(seed[2]))
@@ -134,13 +136,14 @@ def _track_from_seed(video_path, n, seed, progress=None):
             back, st2, _ = cv2.calcOpticalFlowPyrLK(gray, prev_gray, nxt, None, **_LK_PARAMS)
             fb = np.abs(pts - back).reshape(-1, 2).max(axis=1)      # round-trip error per point
             ok_pts = (st1.ravel() == 1) & (st2.ravel() == 1) & (fb < _FB_ERROR_MAX)
-            kept = nxt[ok_pts]
-            if len(kept) >= _MIN_TRACK_PTS:
-                c = np.median(kept.reshape(-1, 2), axis=0)
-                centers[f] = (c[0], c[1])
-                last = (float(c[0]), float(c[1]))
-                pts = kept.reshape(-1, 1, 2).astype(np.float32)
-                if len(kept) < 8:                                  # cloud thinning -> top it up
+            if ok_pts.sum() >= _MIN_TRACK_PTS:
+                # move the centre by the CONSENSUS motion of the survivors (median-flow), not by their
+                # median position -> re-seeding after a bounce can't shift the baseline between reps
+                flow = (nxt[ok_pts] - pts[ok_pts]).reshape(-1, 2)
+                last = (last[0] + float(np.median(flow[:, 0])), last[1] + float(np.median(flow[:, 1])))
+                centers[f] = last
+                pts = nxt[ok_pts].reshape(-1, 1, 2).astype(np.float32)
+                if len(pts) < 8:                                   # cloud thinning -> top it up
                     extra = _seed_points(gray, last[0], last[1], sr)
                     if extra is not None:
                         pts = np.vstack([pts, extra]).astype(np.float32)
