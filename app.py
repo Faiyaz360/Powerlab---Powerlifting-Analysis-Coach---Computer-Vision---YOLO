@@ -14,7 +14,7 @@ import gradio as gr
 import numpy as np
 
 from src import advanced_metrics as am
-from src import charts, confidence as conf, history, media, pipeline, plate_dataset
+from src import charts, confidence as conf, history, marking, media, pipeline, plate_dataset
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -33,9 +33,10 @@ DB_PATH = "data/history.db"
 # Override either way with the POSE_BACKEND env var.
 POSE_BACKEND = os.environ.get("POSE_BACKEND") or ("mediapipe" if os.environ.get("SPACE_ID") else "yolo")
 
-# Two-click plate-marking prompts (the seed both steers the tracker and is saved as training data).
-SEED_INSTR = ("**Tap the plate** to place the circle, then **Plate radius** sizes it "
-              "(X / Y sliders fine-tune).")
+# Two-tap plate-marking prompts (the seed both steers the tracker and is saved as training data).
+SEED_INSTR = "**Tap the centre** of the plate, then **tap its edge** to set the size."
+SEED_INSTR_EDGE = "Centre set - now **tap the edge** of the plate to size the circle."
+SEED_INSTR_DONE = "Plate set. Tap the **centre** again to redo, or press **Analyse**."
 
 # Athletic-blue, system-font theme; follows the device's light/dark setting automatically.
 THEME = gr.themes.Soft(
@@ -259,17 +260,17 @@ def on_upload(video_path):
     if not video_path:
         return (None, None, None, SEED_INSTR, None,
                 gr.update(maximum=1, value=0), gr.update(maximum=1, value=1),
-                gr.update(), gr.update(), gr.update())
+                gr.update(), gr.update(), gr.update(), 0)
     safe = media.browser_safe_video(video_path)
     frame = _first_frame_rgb(safe)
     dur = round(media.duration_s(safe), 1) or 1.0
     h, w = (frame.shape[0], frame.shape[1]) if frame is not None else (480, 640)
     cx, cy, r = w // 2, h // 2, round(h * 0.12)
-    # video_in, seed_img, frame0_state, seed_instr, source_state, trim_start, trim_end, cx, cy, radius
+    # ...seed_instr, source_state, trim_start, trim_end, cx, cy, radius, tap_state
     return (safe, _reticle_view(frame, cx, cy, r), frame, SEED_INSTR, safe,
             gr.update(maximum=dur, value=0.0), gr.update(maximum=dur, value=dur),
             gr.update(maximum=w, value=cx), gr.update(maximum=h, value=cy),
-            gr.update(maximum=max(20, h // 2), value=r))
+            gr.update(maximum=max(20, h // 2), value=r), 0)
 
 
 def on_trim(source, start, end, cx, cy, r):
@@ -288,12 +289,16 @@ def on_reticle(frame0, cx, cy, r):
     return _reticle_view(frame0, cx, cy, r)
 
 
-def on_tap(frame0, radius, evt: gr.SelectData):
-    """Tap the image to place the plate centre there (touch-friendly); syncs the X / Y sliders."""
+def on_tap(frame0, cx, cy, r, tap_state, evt: gr.SelectData):
+    """Two-tap plate marking (touch-native): the first tap drops the centre, the second sets the
+    radius from how far it lands. Redraws the reticle, updates the sliders, and advances the
+    prompt for the next tap."""
     if frame0 is None or evt.index is None:
-        return gr.update(), gr.update(), gr.update()
+        return (gr.update(),) * 6
     x, y = int(evt.index[0]), int(evt.index[1])
-    return _reticle_view(frame0, x, y, radius), gr.update(value=x), gr.update(value=y)
+    cx, cy, r, nxt = marking.tap_to_seed(tap_state, x, y, int(cx), int(cy), int(r))
+    instr = SEED_INSTR_EDGE if nxt == 1 else SEED_INSTR_DONE
+    return _reticle_view(frame0, cx, cy, r), cx, cy, r, nxt, instr
 
 
 @spaces.GPU(duration=120)
@@ -377,11 +382,12 @@ with gr.Blocks(title="Form Lab") as demo:
                 trim_btn = gr.Button("Apply trim", size="sm")
             seed_img = gr.Image(label="Mark the plate — align the circle", type="numpy",
                                 interactive=False, height=360)
-            with gr.Row():
-                seed_cx = gr.Slider(0, 1, value=0, step=1, label="Centre X")
-                seed_cy = gr.Slider(0, 1, value=0, step=1, label="Centre Y")
-            seed_radius = gr.Slider(10, 300, value=60, step=1, label="Plate radius")
             seed_instr = gr.Markdown(SEED_INSTR)
+            with gr.Accordion("Adjust by hand (optional)", open=False):
+                with gr.Row():
+                    seed_cx = gr.Slider(0, 1, value=0, step=1, label="Centre X")
+                    seed_cy = gr.Slider(0, 1, value=0, step=1, label="Centre Y")
+                seed_radius = gr.Slider(10, 300, value=60, step=1, label="Plate radius")
             with gr.Row():
                 lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
                 load_in = gr.Number(label="Bar load (kg)", value=None)
@@ -405,6 +411,7 @@ with gr.Blocks(title="Form Lab") as demo:
 
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
         source_state = gr.State(None)   # full transcoded clip (trim source, non-cumulative)
+        tap_state = gr.State(0)         # two-tap marker: 0 = next tap sets centre, 1 = sets radius
     with gr.Tab("History") as history_tab:
         with gr.Row():
             metric_in = gr.Dropdown(["consistency", "velocity_loss", "mean_velocity"],
@@ -422,12 +429,13 @@ with gr.Blocks(title="Form Lab") as demo:
 
     video_in.upload(on_upload, [video_in],
                     [video_in, seed_img, frame0_state, seed_instr, source_state,
-                     trim_start, trim_end, seed_cx, seed_cy, seed_radius])
+                     trim_start, trim_end, seed_cx, seed_cy, seed_radius, tap_state])
     trim_btn.click(on_trim, [source_state, trim_start, trim_end, seed_cx, seed_cy, seed_radius],
                    [video_in, seed_img, frame0_state])
     for _sld in (seed_cx, seed_cy, seed_radius):
         _sld.release(on_reticle, [frame0_state, seed_cx, seed_cy, seed_radius], seed_img)
-    seed_img.select(on_tap, [frame0_state, seed_radius], [seed_img, seed_cx, seed_cy])
+    seed_img.select(on_tap, [frame0_state, seed_cx, seed_cy, seed_radius, tap_state],
+                    [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
     run_btn.click(analyze,
                   [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius, frame0_state],
                   [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out])
