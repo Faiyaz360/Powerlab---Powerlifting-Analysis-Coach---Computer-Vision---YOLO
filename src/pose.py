@@ -82,7 +82,7 @@ _CACHE_DIR = Path(__file__).resolve().parent.parent / ".posecache"
 
 
 def estimate_pose(video_path, backend: str = "mediapipe", model_complexity: int = 2,
-                  yolo_model: str = "yolo11m-pose.pt", progress=None, use_cache: bool = True) -> PoseResult:
+                  yolo_model: str = "yolo26m-pose.pt", progress=None, use_cache: bool = True) -> PoseResult:
     """Run pose estimation over a video. ``backend``: "mediapipe" or "yolo".
 
     Results are cached to ``.posecache/`` (keyed by video + mtime + backend) so re-analysing the
@@ -229,7 +229,7 @@ def _estimate_pose_rtmpose(video_path, progress) -> PoseResult:
     from rtmlib import Body
 
     device = "cuda" if "CUDAExecutionProvider" in ort.get_available_providers() else "cpu"
-    body = Body(mode="balanced", backend="onnxruntime", device=device)
+    body = Body(mode="performance", backend="onnxruntime", device=device)
 
     fps, width, height = _video_meta(video_path)
     cap = cv2.VideoCapture(str(video_path))
