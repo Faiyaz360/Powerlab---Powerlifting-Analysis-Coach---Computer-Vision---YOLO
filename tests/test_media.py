@@ -16,3 +16,22 @@ def test_10bit_h264_still_needs_transcode():
 
 def test_unknown_codec_left_alone():
     assert media._needs_transcode(None, None) is False
+
+
+def test_4k_portrait_needs_downscale():
+    # iPhone 4K portrait: long side 3840 > 1280.
+    assert media._needs_downscale(2160, 3840) is True
+
+
+def test_landscape_1080p_needs_downscale():
+    # 1920x1080: long side 1920 > 1280.
+    assert media._needs_downscale(1920, 1080) is True
+
+
+def test_at_target_not_downscaled():
+    # 720x1280: long side == 1280, not greater -> leave it.
+    assert media._needs_downscale(720, 1280) is False
+
+
+def test_unknown_size_left_alone():
+    assert media._needs_downscale(0, 0) is False
