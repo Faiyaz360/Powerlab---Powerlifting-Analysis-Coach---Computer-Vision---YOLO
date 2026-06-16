@@ -219,10 +219,14 @@ def _draw_angle(frame, lm, f, joint_idx, primary):
 
 
 def _speed_color(t: float):
-    """Normalized speed t in [0,1] -> BGR. Slow = blue, fast = red (no green — avoids clashing
-    with the green skeleton). Unit-tested."""
+    """Normalised speed t in [0,1] -> BGR heatmap: slow = blue, average = green, fast = red.
+    Three bands so mid-speed reads as green instead of the whole path looking red. Unit-tested."""
     t = 0.0 if t < 0 else 1.0 if t > 1 else t
-    return (int(255 * (1 - t)), 0, int(255 * t))     # blue -> red
+    if t < 0.5:
+        u = t / 0.5                                  # blue -> green
+        return (int(255 * (1 - u)), int(255 * u), 0)
+    u = (t - 0.5) / 0.5                              # green -> red
+    return (0, int(255 * (1 - u)), int(255 * u))
 
 
 def _bar_speeds(bar_xy):
@@ -252,10 +256,10 @@ def _draw_bar_path(frame, bar_xy, f, speeds, vmax, cur_start=0):
         p = (int(bar_xy[i, 0]), int(bar_xy[i, 1]))
         if last is not None:
             if i <= cur_start:
-                cv2.line(frame, last, p, PATH_FADED, 1, cv2.LINE_AA)        # earlier reps: faint grey
+                cv2.line(frame, last, p, PATH_FADED, 2, cv2.LINE_AA)        # earlier reps: faint grey
             else:
                 t = (speeds[i] / vmax) if (speeds is not None and vmax > 0) else 0.0
-                cv2.line(frame, last, p, _speed_color(t), 3, cv2.LINE_AA)   # current rep: bright
+                cv2.line(frame, last, p, _speed_color(t), 5, cv2.LINE_AA)   # current rep: bright, thicker
         last = p
     if last is not None:
         cv2.circle(frame, last, 6, WHITE, -1)

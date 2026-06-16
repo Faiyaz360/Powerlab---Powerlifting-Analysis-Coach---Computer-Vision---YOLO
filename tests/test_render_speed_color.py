@@ -6,8 +6,8 @@ def test_speed_color_slow_is_blue():
     assert render._speed_color(0.0) == (255, 0, 0)
 
 
-def test_speed_color_mid_is_purple():
-    assert render._speed_color(0.5) == (127, 0, 127)
+def test_speed_color_mid_is_green():
+    assert render._speed_color(0.5) == (0, 255, 0)
 
 
 def test_speed_color_fast_is_red():
