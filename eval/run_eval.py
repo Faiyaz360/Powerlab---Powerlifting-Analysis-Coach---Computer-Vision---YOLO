@@ -101,11 +101,16 @@ def main():
     ap.add_argument("--pose", default="yolo", choices=list(BACKENDS), help="pose backend to evaluate")
     ap.add_argument("--compare", action="store_true",
                     help="run every backend and print a side-by-side table")
+    ap.add_argument("--clips", default=None,
+                    help="comma-separated name substrings to include (default: all clips)")
     args = ap.parse_args()
 
     files = sorted(GT_DIR.glob("*.json"))
+    if args.clips:
+        wanted = [c.strip() for c in args.clips.split(",")]
+        files = [f for f in files if any(w in f.stem for w in wanted)]
     if not files:
-        print("No ground-truth files in eval/groundtruth/. Add some (see eval/README.md).")
+        print("No ground-truth files match (see eval/groundtruth/ and eval/README.md).")
         return
 
     if args.compare:
