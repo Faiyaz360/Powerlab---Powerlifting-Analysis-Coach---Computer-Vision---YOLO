@@ -29,7 +29,11 @@ S_MIN, V_MIN = 90, 60     # a plate is a saturated, bright colour (hue-agnostic 
 CIRCULARITY_MIN = 0.55    # contourArea / enclosing-circle area — rejects non-round blobs
 HUE_TOL = 18              # once locked onto the plate's hue, reject other-colour blobs (bg plate)
 MIN_PEAK_MS = 0.3         # a real concentric pull peaks above this; below = height drift, not a rep
-MATCH_MIN = 0.45          # template-match confidence (TM_CCOEFF_NORMED) below which we hold position
+# Lucas-Kanade optical-flow tracking of the marked plate (replaces template matching, which drifts).
+_LK_PARAMS = dict(winSize=(21, 21), maxLevel=3,
+                  criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
+_FB_ERROR_MAX = 1.5       # px — forward-backward round-trip error gate (drops points the flow lost)
+_MIN_TRACK_PTS = 3        # below this the plate is treated as lost (occluded) -> hold last position
 _KERNEL = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
 
 # (left, right) landmark slots whose midpoint sits near the plate on the camera side
@@ -100,50 +104,92 @@ def track_plate(video_path, pose: P.PoseResult, lift: str, plate_backend: str = 
 
 
 def _track_from_seed(video_path, n, seed, progress=None):
-    """Pure MANUAL bar track by TEMPLATE MATCHING the plate patch the user clicked on frame 0.
+    """MANUAL bar track by LUCAS-KANADE optical flow from the plate the user marked on frame 0.
 
-    Matching the plate's appearance (logo/hub) locks the centre to a fixed point on the plate, so
-    it does NOT drift the way a colour-blob centroid does when a shin/hand partially occludes the
-    plate at the bottom of the lift. We search a window around the plate's previous position; if
-    the best match is weak (heavy occlusion) we hold position rather than jump. Radius is the
-    marked radius (a plate's on-screen size barely changes for a fixed side-on camera).
+    We scatter a few strong feature points across the marked plate disc and follow each one
+    frame-to-frame with pyramidal optical flow (cv2.calcOpticalFlowPyrLK). A forward-backward
+    consistency check throws out points the flow lost, and the plate centre is the MEDIAN of the
+    survivors, so a handful of bad points can't drag it. If too many points are lost (the plate is
+    occluded at lockout) we hold the last centre and re-acquire when it reappears. This is the
+    validated approach for barbell paths (Nagao 2022, ICC ~0.99 vs motion-capture) and, unlike
+    template matching, it doesn't slide along the plate rim or snap onto the body. Radius is the
+    marked radius (a side-on plate's on-screen size barely changes). The path is 1-euro smoothed.
     """
     cap = cv2.VideoCapture(str(video_path))
-    scx, scy, sr = int(round(seed[0])), int(round(seed[1])), int(round(seed[2]))
+    scx, scy, sr = float(seed[0]), float(seed[1]), int(round(seed[2]))
     centers = np.full((n, 2), np.nan)
     radii = np.full(n, float(sr))
-    template, prev = None, (float(scx), float(scy))
+    prev_gray, pts, last = None, None, (scx, scy)
     f = 0
     while True:
         ok, frame = cap.read()
         if not ok or f >= n:
             break
-        h, w = frame.shape[:2]
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
         if f == 0:
-            x0, y0 = max(0, scx - sr), max(0, scy - sr)
-            x1, y1 = min(w, scx + sr), min(h, scy + sr)
-            template = frame[y0:y1, x0:x1].copy()
+            pts = _seed_points(gray, scx, scy, sr)
             centers[f] = (scx, scy)
-        elif template is not None and template.size:
-            th, tw = template.shape[:2]
-            pad = int(sr * 1.2)                                  # tight: a plate moves little frame-to-frame
-            sx0, sy0 = max(0, int(prev[0]) - tw // 2 - pad), max(0, int(prev[1]) - th // 2 - pad)
-            sx1, sy1 = min(w, int(prev[0]) + tw // 2 + pad), min(h, int(prev[1]) + th // 2 + pad)
-            win = frame[sy0:sy1, sx0:sx1]
-            if win.shape[0] >= th and win.shape[1] >= tw:
-                _, score, _, loc = cv2.minMaxLoc(
-                    cv2.matchTemplate(win, template, cv2.TM_CCOEFF_NORMED))
-                if score >= MATCH_MIN:                          # else: occluded -> hold (leave NaN)
-                    cx, cy = sx0 + loc[0] + tw / 2.0, sy0 + loc[1] + th / 2.0
-                    centers[f] = (cx, cy)
-                    prev = (cx, cy)
+        elif pts is not None and len(pts) >= _MIN_TRACK_PTS:
+            nxt, st1, _ = cv2.calcOpticalFlowPyrLK(prev_gray, gray, pts, None, **_LK_PARAMS)
+            back, st2, _ = cv2.calcOpticalFlowPyrLK(gray, prev_gray, nxt, None, **_LK_PARAMS)
+            fb = np.abs(pts - back).reshape(-1, 2).max(axis=1)      # round-trip error per point
+            ok_pts = (st1.ravel() == 1) & (st2.ravel() == 1) & (fb < _FB_ERROR_MAX)
+            kept = nxt[ok_pts]
+            if len(kept) >= _MIN_TRACK_PTS:
+                c = np.median(kept.reshape(-1, 2), axis=0)
+                centers[f] = (c[0], c[1])
+                last = (float(c[0]), float(c[1]))
+                pts = kept.reshape(-1, 1, 2).astype(np.float32)
+                if len(kept) < 8:                                  # cloud thinning -> top it up
+                    extra = _seed_points(gray, last[0], last[1], sr)
+                    if extra is not None:
+                        pts = np.vstack([pts, extra]).astype(np.float32)
+            else:
+                pts = _seed_points(gray, last[0], last[1], sr)      # lost -> hold (NaN) + re-acquire
+        else:
+            pts = _seed_points(gray, last[0], last[1], sr)          # too few points -> re-acquire
+        prev_gray = gray
         f += 1
         if progress:
             progress(f)
     cap.release()
-    centers[:, 0] = _fill_hold(centers[:, 0])      # hold through gaps (don't slide down at lockout)
-    centers[:, 1] = _fill_hold(centers[:, 1])
-    return centers, radii
+    cx = _one_euro(_fill_hold(centers[:, 0]))      # hold through occlusion gaps, then smooth
+    cy = _one_euro(_fill_hold(centers[:, 1]))
+    return np.column_stack([cx, cy]), radii
+
+
+def _seed_points(gray, cx, cy, r):
+    """Strong corner/edge features inside the plate disc at (cx, cy) — the points optical flow
+    follows. Masked to the disc so we lock onto the plate, not the background. (N,1,2) or None."""
+    mask = np.zeros(gray.shape[:2], np.uint8)
+    cv2.circle(mask, (int(round(cx)), int(round(cy))), max(4, int(r * 0.85)), 255, -1)
+    pts = cv2.goodFeaturesToTrack(gray, maxCorners=40, qualityLevel=0.01,
+                                  minDistance=5, mask=mask, blockSize=7)
+    return pts.astype(np.float32) if pts is not None else None
+
+
+def _one_euro(series, min_cutoff=1.0, beta=0.02, dt=1.0):
+    """1-euro filter (Casiez 2012): smooths jitter when the bar is slow but stays responsive when
+    it's fast, so it cleans the path without lagging peak velocity. ``dt`` is in frames."""
+    x = np.asarray(series, dtype=float)
+    if len(x) < 2:
+        return x.copy()
+
+    def _alpha(cutoff):
+        tau = 1.0 / (2.0 * np.pi * cutoff)
+        return 1.0 / (1.0 + tau / dt)
+
+    out = x.copy()
+    x_prev, dx_prev = x[0], 0.0
+    for i in range(1, len(x)):
+        dx = (x[i] - x_prev) / dt
+        a_d = _alpha(1.0)
+        dx_hat = a_d * dx + (1.0 - a_d) * dx_prev
+        cutoff = min_cutoff + beta * abs(dx_hat)
+        a = _alpha(cutoff)
+        out[i] = a * x[i] + (1.0 - a) * out[i - 1]
+        x_prev, dx_prev = x[i], dx_hat
+    return out
 
 
 def _load_plate_model():
