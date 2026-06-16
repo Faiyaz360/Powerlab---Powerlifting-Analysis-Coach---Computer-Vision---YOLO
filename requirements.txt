@@ -12,8 +12,9 @@ pytest>=8.0             # unit tests
 # --- Phase 2: web app ---
 gradio>=6.0             # pure-Python web UI (Phase 2)
 
-# --- GPU tier: YOLO26-pose (enable a GPU on the Space + set POSE_BACKEND=yolo) ---
-ultralytics>=8.4        # YOLO26-pose; pulls torch + torchvision (CUDA wheels on the Linux GPU)
+# --- GPU tier: YOLO26-pose on ZeroGPU (enable ZeroGPU hardware + set POSE_BACKEND=yolo) ---
+torch>=2.8.0            # ZeroGPU requires torch 2.8.0+ (older versions are unsupported)
+ultralytics>=8.4        # YOLO26-pose (uses the torch above)
 spaces                  # Hugging Face ZeroGPU runtime (the @spaces.GPU decorator)
 
 # --- Phase 3: GPU pose backend (installed). Use --pose yolo ---
