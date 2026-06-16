@@ -16,6 +16,7 @@ ORANGE = (0, 200, 255)
 WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
 MAGENTA = (255, 0, 255)
+SKELETON = (230, 230, 230)  # faint full-body skeleton, under the bold analysis chain
 
 # which landmark labels the primary angle, per side
 _PRIMARY_JOINT = {
@@ -63,6 +64,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         if not ok:
             break
         if f < pose.num_frames:
+            _draw_full_skeleton(frame, lm, f)
             _draw_skeleton(frame, lm, f, chain)
             _draw_angle(frame, lm, f, joint_idx, primary)
             done = sum(1 for e in rep_end_frames if e <= f)
@@ -75,6 +77,33 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     cap.release()
     writer.release()
     return out_path
+
+
+_BODY_EDGES = [
+    (P.NOSE, P.L_SHOULDER), (P.NOSE, P.R_SHOULDER),
+    (P.L_SHOULDER, P.R_SHOULDER), (P.L_HIP, P.R_HIP),
+    (P.L_SHOULDER, P.L_HIP), (P.R_SHOULDER, P.R_HIP),
+    (P.L_SHOULDER, P.L_ELBOW), (P.L_ELBOW, P.L_WRIST),
+    (P.R_SHOULDER, P.R_ELBOW), (P.R_ELBOW, P.R_WRIST),
+    (P.L_HIP, P.L_KNEE), (P.L_KNEE, P.L_ANKLE),
+    (P.R_HIP, P.R_KNEE), (P.R_KNEE, P.R_ANKLE),
+    (P.L_ANKLE, P.L_HEEL), (P.L_HEEL, P.L_FOOT), (P.L_ANKLE, P.L_FOOT),
+    (P.R_ANKLE, P.R_HEEL), (P.R_HEEL, P.R_FOOT), (P.R_ANKLE, P.R_FOOT),
+]
+_BODY_JOINTS = sorted({s for e in _BODY_EDGES for s in e})
+
+
+def _draw_full_skeleton(frame, lm, f):
+    """Faint full-body skeleton from every available landmark (MediaPipe fills all 33; YOLO/RTMPose
+    fill the COCO subset, so the rest are skipped). The bold analysis chain is drawn over this."""
+    for a, b in _BODY_EDGES:
+        pa, pb = _xy(lm, f, a), _xy(lm, f, b)
+        if pa and pb:
+            cv2.line(frame, pa, pb, SKELETON, 2, cv2.LINE_AA)
+    for idx in _BODY_JOINTS:
+        p = _xy(lm, f, idx)
+        if p:
+            cv2.circle(frame, p, 4, ORANGE, -1)
 
 
 def _draw_skeleton(frame, lm, f, chain):
