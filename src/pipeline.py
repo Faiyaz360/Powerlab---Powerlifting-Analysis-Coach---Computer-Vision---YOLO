@@ -14,7 +14,7 @@ from . import report as reportmod
 
 def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
             backend: str = "yolo", model_complexity: int = 2, plate_backend: str = "hsv",
-            seed=None) -> dict:
+            seed=None, clean: bool = True) -> dict:
     """Run pose -> metrics -> faults -> coaching -> annotated video + report.
 
     ``backend``: "mediapipe" (CPU) or "yolo" (YOLO11-pose on GPU, sharper landmarks).
@@ -48,6 +48,7 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["scale_m_per_px"] = scale
     analysis["bar_reps"] = bar_reps
     analysis["bar_velocity"] = barmod.velocity_per_rep(bar_xy, bar_reps, pose.fps, scale)
+    analysis["clean"] = clean   # clean overlay (bar path only, WL-style) vs detailed skeleton view
 
     annotated = out_dir / f"{name}_annotated.mp4"
     rendermod.render_video(video_path, annotated, pose, analysis)

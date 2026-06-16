@@ -70,6 +70,8 @@ footer {display: none !important;}
 .fl-sec {font-size: 13px; font-weight: 600; color: var(--body-text-color-subdued);
          margin: 14px 0 6px; letter-spacing: .02em;}
 .fl-narrow {max-width: 560px; margin: 0 auto;}
+#fl-video, #fl-video video {background: #0b0b0c !important; border-radius: 14px;}
+.fl-narrow .table-wrap {border-radius: 12px;}
 """
 
 
@@ -117,6 +119,22 @@ def _first_velocity(a: dict):
     if not bv:
         return None, None
     return bv[0].get("mean_velocity_ms"), bv[0].get("peak_velocity_ms")
+
+
+def _velocity_table(a: dict):
+    """Per-rep velocity rows for the stats table under the video: rep #, mean, peak, ROM, time.
+    Uses calibrated m/s + m when the plate was marked (it always is here); else raw px units."""
+    rows = []
+    for i, v in enumerate(a.get("bar_velocity") or [], start=1):
+        if not v:
+            continue
+        if v.get("calibrated"):
+            rows.append([i, v.get("mean_velocity_ms"), v.get("peak_velocity_ms"),
+                         v.get("rom_m"), v.get("concentric_s")])
+        else:
+            rows.append([i, v.get("mean_velocity_px_s"), v.get("peak_velocity_px_s"),
+                         v.get("rom_px"), v.get("concentric_s")])
+    return rows
 
 
 def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
@@ -302,7 +320,7 @@ def on_tap(frame0, cx, cy, r, tap_state, evt: gr.SelectData):
 
 
 @spaces.GPU(duration=120)
-def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
+def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, detail,
             progress=gr.Progress()):
     if not video_path:
         raise gr.Error("Upload a lift video first.")
@@ -323,6 +341,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
     try:
         result = pipeline.analyze(
             video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple, backend=POSE_BACKEND,
+            clean=not detail,
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:
@@ -345,6 +364,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
         charts.angle_curve(a),
         charts.velocity_bars(a.get("bar_velocity") or []),
         report_md,
+        _velocity_table(a),
     )
 
 
@@ -391,13 +411,18 @@ with gr.Blocks(title="Form Lab") as demo:
             with gr.Row():
                 lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
                 load_in = gr.Number(label="Bar load (kg)", value=None)
+            detail_in = gr.Checkbox(value=False, label="Detailed skeleton view (off = clean bar-path overlay)")
             run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
         # --- results: verdict banner, centred video, then the stat-card grid (auto-reflows) ---
         verdict_out = gr.HTML(elem_classes="fl-narrow")
         with gr.Column(elem_classes="fl-video-wrap"):
-            video_out = gr.Video(label="Annotated", show_label=False, autoplay=True, height=460)
+            video_out = gr.Video(label="Annotated", show_label=False, autoplay=True, height=460,
+                                 elem_id="fl-video")
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
+        gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
+        reps_table = gr.Dataframe(headers=["Rep", "Mean m/s", "Peak m/s", "ROM m", "Time s"],
+                                  interactive=False, elem_classes="fl-narrow")
         cards_out = gr.HTML()
         gr.HTML("<div class='fl-sec'>STRENGTH</div>")
         strength_out = gr.HTML()
@@ -437,8 +462,10 @@ with gr.Blocks(title="Form Lab") as demo:
     seed_img.select(on_tap, [frame0_state, seed_cx, seed_cy, seed_radius, tap_state],
                     [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
     run_btn.click(analyze,
-                  [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius, frame0_state],
-                  [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out])
+                  [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
+                   frame0_state, detail_in],
+                  [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out,
+                   reps_table])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
 

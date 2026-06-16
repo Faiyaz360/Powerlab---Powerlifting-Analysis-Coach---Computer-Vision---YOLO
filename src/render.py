@@ -17,6 +17,7 @@ WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
 MAGENTA = (255, 0, 255)
 SKELETON = (230, 230, 230)  # faint full-body skeleton, under the bold analysis chain
+PATH_FADED = (150, 150, 150)  # completed reps drawn faint grey under the bright current-rep path
 
 # which landmark labels the primary angle, per side
 _PRIMARY_JOINT = {
@@ -67,6 +68,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     reps = analysis["reps"]
     rep_metrics = analysis["rep_metrics"]
     bar_xy = analysis.get("bar_xy")
+    clean = analysis.get("clean", True)   # clean = bar-path-only overlay (WL-style); else full skeleton
 
     if side == "left":
         chain = [P.L_SHOULDER, P.L_HIP, P.L_KNEE, P.L_ANKLE, P.L_FOOT]
@@ -90,14 +92,16 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         if not ok:
             break
         if f < pose.num_frames:
-            region = _body_region(lm, f)
-            _draw_full_skeleton(frame, lm, f, region)
-            _draw_skeleton(frame, lm, f, chain, region)
-            _draw_angle(frame, lm, f, joint_idx, primary)
+            cur_start = max([e for e in rep_end_frames if e <= f], default=0)  # current-rep boundary
+            if not clean:                                  # detailed view: full skeleton + joint angle
+                region = _body_region(lm, f)
+                _draw_full_skeleton(frame, lm, f, region)
+                _draw_skeleton(frame, lm, f, chain, region)
+                _draw_angle(frame, lm, f, joint_idx, primary)
+            _draw_bar_path(frame, bar_xy, f, bar_speeds, bar_vmax, cur_start)
             done = sum(1 for e in rep_end_frames if e <= f)
             cv2.putText(frame, f"Reps: {done}", (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.1, YELLOW, 2)
             _draw_badge(frame, f, rep_metrics, badge_window)
-            _draw_bar_path(frame, bar_xy, f, bar_speeds, bar_vmax)
         writer.write(frame)
         f += 1
 
@@ -172,20 +176,25 @@ def _bar_speeds(bar_xy):
     return speeds, vmax
 
 
-def _draw_bar_path(frame, bar_xy, f, speeds, vmax):
-    """Bar path coloured by speed: red (slow) -> green (fast). White dot = current plate centre."""
+def _draw_bar_path(frame, bar_xy, f, speeds, vmax, cur_start=0):
+    """Bar path: completed reps faded grey, the CURRENT rep speed-coloured (blue slow -> red fast).
+    ``cur_start`` is the frame the current rep began. White dot = current plate centre."""
     if bar_xy is None:
         return
-    pts, spd = [], []
+    last = None
     for i in range(f + 1):
-        if not np.any(np.isnan(bar_xy[i])):
-            pts.append((int(bar_xy[i, 0]), int(bar_xy[i, 1])))
-            spd.append(speeds[i] if speeds is not None else 0.0)
-    for a, b, s in zip(pts, pts[1:], spd[1:]):
-        t = (s / vmax) if vmax > 0 else 0.0
-        cv2.line(frame, a, b, _speed_color(t), 2, cv2.LINE_AA)
-    if pts:
-        cv2.circle(frame, pts[-1], 6, WHITE, -1)
+        if np.any(np.isnan(bar_xy[i])):
+            continue
+        p = (int(bar_xy[i, 0]), int(bar_xy[i, 1]))
+        if last is not None:
+            if i <= cur_start:
+                cv2.line(frame, last, p, PATH_FADED, 1, cv2.LINE_AA)        # earlier reps: faint grey
+            else:
+                t = (speeds[i] / vmax) if (speeds is not None and vmax > 0) else 0.0
+                cv2.line(frame, last, p, _speed_color(t), 3, cv2.LINE_AA)   # current rep: bright
+        last = p
+    if last is not None:
+        cv2.circle(frame, last, 6, WHITE, -1)
 
 
 def _draw_badge(frame, f, rep_metrics, window):
