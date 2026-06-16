@@ -24,7 +24,7 @@ _BROWSER_SAFE_PIXFMTS = {"yuv420p", "yuvj420p"}
 # Cap the longer side of the working clip. Downscaling here makes the transcode, pose, bar tracking
 # and rendering all faster (fewer pixels) with no real accuracy cost — the pose model resizes
 # internally anyway, and the marked plate scales with the frame. 1280 keeps the plate well-resolved.
-TARGET_LONG_SIDE = 1280
+TARGET_LONG_SIDE = 960
 
 
 def _needs_transcode(codec: str | None, pix_fmt: str | None) -> bool:
@@ -89,7 +89,7 @@ def browser_safe_video(path, out_dir="output/_preview") -> str:
     try:
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(path), "-vf", scale,
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "23",
              "-an", "-movflags", "+faststart", str(out)],
             capture_output=True, timeout=300, check=True,
         )
@@ -126,7 +126,7 @@ def trim(path, start, end, out_dir="output/_preview") -> str:
     try:
         subprocess.run(
             ["ffmpeg", "-y", "-i", str(path), "-ss", str(start), "-to", str(end),
-             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "23",
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "ultrafast", "-crf", "23",
              "-c:a", "aac", "-movflags", "+faststart", str(out)],
             capture_output=True, timeout=300, check=True,
         )

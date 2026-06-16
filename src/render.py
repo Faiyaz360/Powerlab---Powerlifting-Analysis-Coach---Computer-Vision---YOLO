@@ -219,14 +219,14 @@ def _draw_angle(frame, lm, f, joint_idx, primary):
 
 
 def _speed_color(t: float):
-    """Normalised speed t in [0,1] -> BGR heatmap: slow = blue, average = green, fast = red.
-    Three bands so mid-speed reads as green instead of the whole path looking red. Unit-tested."""
+    """Normalised speed t in [0,1] -> BGR heatmap: slow = red, average = blue, fast = green.
+    Three bands. Unit-tested."""
     t = 0.0 if t < 0 else 1.0 if t > 1 else t
     if t < 0.5:
-        u = t / 0.5                                  # blue -> green
-        return (int(255 * (1 - u)), int(255 * u), 0)
-    u = (t - 0.5) / 0.5                              # green -> red
-    return (0, int(255 * (1 - u)), int(255 * u))
+        u = t / 0.5                                  # red -> blue
+        return (int(255 * u), 0, int(255 * (1 - u)))
+    u = (t - 0.5) / 0.5                              # blue -> green
+    return (int(255 * (1 - u)), int(255 * u), 0)
 
 
 def _bar_speeds(bar_xy):
@@ -320,6 +320,16 @@ def _draw_velocity_graph(frame, pts, box, f):
         cv2.polylines(frame, [pts[:k]], False, START_LINE, 2, cv2.LINE_AA)    # past curve, bright
     cx = int(pts[min(f, len(pts) - 1)][0])
     cv2.line(frame, (cx, gy0), (cx, gy1), WHITE, 1, cv2.LINE_AA)              # 'now' cursor
+    # label + slow/avg/fast colour key (drawn last so they stay readable over the curve)
+    s = max(0.5, (gx1 - gx0) / 1100.0)
+    cv2.putText(frame, "BAR SPEED (m/s)", (gx0 + 4, gy0 + int(18 * s)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.5 * s, (215, 215, 219), 1, cv2.LINE_AA)
+    lx = gx1 - int(168 * s)
+    for label, frac in (("slow", 0.0), ("avg", 0.5), ("fast", 1.0)):
+        cv2.circle(frame, (lx, gy0 + int(13 * s)), max(2, int(5 * s)), _speed_color(frac), -1)
+        cv2.putText(frame, label, (lx + int(9 * s), gy0 + int(18 * s)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.45 * s, (215, 215, 219), 1, cv2.LINE_AA)
+        lx += int(56 * s)
 
 
 def _draw_badge(frame, f, rep_metrics, window):
