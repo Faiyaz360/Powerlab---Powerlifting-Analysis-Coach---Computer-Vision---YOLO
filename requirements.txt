@@ -14,6 +14,7 @@ gradio>=6.0             # pure-Python web UI (Phase 2)
 
 # --- GPU tier: YOLO26-pose (enable a GPU on the Space + set POSE_BACKEND=yolo) ---
 ultralytics>=8.4        # YOLO26-pose; pulls torch + torchvision (CUDA wheels on the Linux GPU)
+spaces                  # Hugging Face ZeroGPU runtime (the @spaces.GPU decorator)
 
 # --- Phase 3: GPU pose backend (installed). Use --pose yolo ---
 # Install torch WITH CUDA (bundles the runtime — do NOT use onnxruntime-gpu on Windows):

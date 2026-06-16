@@ -16,6 +16,16 @@ import numpy as np
 from src import advanced_metrics as am
 from src import charts, confidence as conf, history, media, pipeline, plate_dataset
 
+try:
+    import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
+except ImportError:  # local / non-ZeroGPU: make the decorator a harmless no-op
+    class spaces:  # noqa: N801
+        @staticmethod
+        def GPU(*_args, **_kwargs):
+            def _wrap(fn):
+                return fn
+            return _wrap
+
 OUT_DIR = "output"
 DB_PATH = "data/history.db"
 
@@ -286,6 +296,7 @@ def on_tap(frame0, radius, evt: gr.SelectData):
     return _reticle_view(frame0, x, y, radius), gr.update(value=x), gr.update(value=y)
 
 
+@spaces.GPU(duration=120)
 def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
             progress=gr.Progress()):
     if not video_path:
