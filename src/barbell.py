@@ -323,6 +323,16 @@ def velocity_per_rep(bar_xy, reps, fps, scale):
     return out
 
 
+def velocity_series(bar_xy, fps, scale):
+    """Per-frame vertical bar velocity over the whole set (upward positive), smoothed the same way
+    as the rep velocities. m/s if calibrated, else px/s. Empty-safe -> None."""
+    if bar_xy is None:
+        return None
+    y = _lowpass(_median3(_interp(bar_xy[:, 1].astype(float))), fps)
+    vel = -np.gradient(y) * fps          # px/s, upward positive
+    return vel * scale if scale else vel
+
+
 def _pack(disp_px, mcv_px, peak_px, dt, scale):
     calibrated = scale is not None
     return {

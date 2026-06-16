@@ -86,6 +86,8 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     # WL-style on-video overlay data: live speed HUD + a 'start' reference line at the bar's origin
     fps = pose.fps
     scale = analysis.get("scale_m_per_px")
+    lift_name = analysis.get("lift", "")
+    bar_load = analysis.get("bar_load")
     bar_velocity = analysis.get("bar_velocity") or []
     bar_reps = analysis.get("bar_reps") or []
     start_y = None
@@ -121,7 +123,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             done = sum(1 for e in rep_end_frames if e <= f)
             speed_ms = (bar_speeds[f] * fps * scale) if (bar_speeds is not None and scale) else None
             mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
-            _draw_hud(frame, done, speed_ms, mean_ms)
+            _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
             _draw_badge(frame, f, rep_metrics, badge_window)
         writer.write(frame)
         f += 1
@@ -256,26 +258,29 @@ def _draw_start_line(frame, start_y):
     cv2.putText(frame, "start", (11, max(th, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, s, START_LINE, 2, cv2.LINE_AA)
 
 
-def _draw_hud(frame, rep_no, speed_ms, mean_ms):
-    """Translucent top-left panel with live metrics (WL-style on-video readout): rep count, the bar's
-    current speed, and the last rep's mean concentric velocity. Text scales with the frame size."""
-    s = max(0.6, frame.shape[1] / 1200.0)
-    lines = [f"REP {rep_no}"]
+def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
+    """Translucent top-left panel with live metrics (WL-style on-video readout): exercise, weight,
+    rep count, the bar's current speed, and the last rep's mean concentric velocity. The box
+    auto-sizes to its text and everything scales with the frame."""
+    s = max(0.9, frame.shape[1] / 850.0)
+    header = (lift or "").upper() + (f"   {bar_load:g} kg" if bar_load else "")
+    rows = [(header, 0.95 * s, YELLOW), (f"REP {rep_no}", 0.8 * s, WHITE)]
     if speed_ms is not None:
-        lines.append(f"{speed_ms:.2f} m/s now")
+        rows.append((f"{speed_ms:.2f} m/s  now", 0.8 * s, WHITE))
     if mean_ms is not None:
-        lines.append(f"{mean_ms:.2f} m/s mean")
-    lh, pad = int(34 * s), int(12 * s)
-    x0, y0 = int(16 * s), int(16 * s)
-    box_w, box_h = int(232 * s), pad * 2 + lh * len(lines)
+        rows.append((f"{mean_ms:.2f} m/s  mean", 0.8 * s, WHITE))
+    thick = max(1, int(2 * s))
+    pad, rh = int(16 * s), int(40 * s)
+    widths = [cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, fs, thick)[0][0] for t, fs, _ in rows]
+    box_w, box_h = max(widths) + pad * 2, pad * 2 + rh * len(rows)
+    x0, y0 = int(18 * s), int(18 * s)
     overlay = frame.copy()
     cv2.rectangle(overlay, (x0, y0), (x0 + box_w, y0 + box_h), (18, 18, 22), -1)
-    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
-    y = y0 + pad + int(20 * s)
-    for i, t in enumerate(lines):
-        cv2.putText(frame, t, (x0 + int(12 * s), y), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.7 * s, YELLOW if i == 0 else WHITE, max(1, int(2 * s)), cv2.LINE_AA)
-        y += lh
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+    y = y0 + pad + int(26 * s)
+    for t, fs, col in rows:
+        cv2.putText(frame, t, (x0 + pad, y), cv2.FONT_HERSHEY_SIMPLEX, fs, col, thick, cv2.LINE_AA)
+        y += rh
 
 
 def _draw_badge(frame, f, rep_metrics, window):

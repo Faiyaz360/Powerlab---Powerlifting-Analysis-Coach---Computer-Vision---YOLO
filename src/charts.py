@@ -38,6 +38,30 @@ def velocity_bars(bar_velocity: list):
     return fig
 
 
+def velocity_time(analysis: dict):
+    """Per-frame bar velocity over the whole set (upward positive) — the 'real-time' velocity trace.
+    Concentric (upward) phases are shaded; rep bottoms are dashed. Empty-safe."""
+    vs = analysis.get("bar_velocity_series")
+    fig, ax = plt.subplots(figsize=(4, 2.4))
+    if vs is None or len(vs) == 0 or not np.any(np.isfinite(vs)):
+        ax.text(0.5, 0.5, "no bar-speed data", ha="center", va="center")
+        ax.axis("off")
+        fig.tight_layout()
+        return fig
+    vs = np.asarray(vs, dtype=float)
+    t = np.arange(len(vs)) / analysis["fps"]
+    unit = "m/s" if analysis.get("scale_m_per_px") else "px/s"
+    ax.axhline(0, color="#9AA0A6", lw=0.8)
+    ax.fill_between(t, vs, 0, where=vs > 0, color="#1D9E75", alpha=0.25)  # concentric (upward)
+    ax.plot(t, vs, color="#378ADD", lw=1.4)
+    for r in analysis.get("bar_reps", []):
+        ax.axvline(r["bottom"] / analysis["fps"], color="#E24B4A", ls="--", alpha=0.4)
+    ax.set_xlabel("time (s)")
+    ax.set_ylabel(f"bar velocity ({unit})")
+    fig.tight_layout()
+    return fig
+
+
 def drift_curve(bar_xy: np.ndarray, scale_m_per_px: float | None, start: int, end: int):
     """Horizontal bar-path drift over a rep (cm). Empty-safe when uncalibrated."""
     fig, ax = plt.subplots(figsize=(4, 2.4))

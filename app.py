@@ -351,6 +351,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
         result = pipeline.analyze(
             video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple, backend=POSE_BACKEND,
             skeleton={"Side points": "side", "All points": "full", "None": "off"}.get(skel, "side"),
+            bar_load=bar_load,
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:
@@ -371,7 +372,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
         _cards_html(a, adv),
         _strength_html(s),
         charts.angle_curve(a),
-        charts.velocity_bars(a.get("bar_velocity") or []),
+        charts.velocity_time(a),
         report_md,
         _velocity_table(a),
     )
@@ -433,7 +434,7 @@ with gr.Blocks(title="Form Lab") as demo:
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
         reps_table = gr.Dataframe(headers=["Rep", "Mean m/s", "Peak m/s", "ROM m", "Time s"],
                                   interactive=False, elem_classes="fl-narrow")
-        vel_out = gr.Plot(label="Velocity per rep", show_label=False, elem_classes="fl-narrow")
+        vel_out = gr.Plot(label="Bar velocity over time", show_label=False, elem_classes="fl-narrow")
         cards_out = gr.HTML()
         gr.HTML("<div class='fl-sec'>STRENGTH</div>")
         strength_out = gr.HTML()
