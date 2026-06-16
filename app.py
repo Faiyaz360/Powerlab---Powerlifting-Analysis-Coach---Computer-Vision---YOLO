@@ -182,8 +182,9 @@ def _card(label, value, unit="") -> str:
 def _verdict_html(a: dict, c) -> str:
     """Confidence-gated verdict banner — never a confident wrong call when the camera is off-axis."""
     if c and not c["axis_ok"]:
+        what = "depth" if a["lift"] == "squat" else "lockout"
         return (f"<div class='fl-verdict fl-warn'><span class='fl-vicon'>⚠</span>"
-                f"<div>Can't judge depth<span class='fl-sub'>{c['reason']}</span></div></div>")
+                f"<div>Can't judge {what}<span class='fl-sub'>{c['reason']}</span></div></div>")
     if a["lift"] == "squat":
         ok = any(r.get("depth_pass") for r in a.get("rep_metrics") or [])
         label = "Good depth" if ok else "High — missed depth"
@@ -198,8 +199,16 @@ def _verdict_html(a: dict, c) -> str:
 
 def _cards_html(a: dict, adv: dict) -> str:
     mcv, _ = _first_velocity(a)
+    rm = a.get("rep_metrics") or []
+    if a["lift"] == "squat":                       # lift-specific primary metric (no depth on deadlifts)
+        made = sum(1 for r in rm if r.get("depth_pass"))
+        primary = _card("Depth made", f"{made}/{len(rm)}" if rm else None)
+    else:
+        made = sum(1 for r in rm if r.get("lockout_pass"))
+        primary = _card("Lockouts", f"{made}/{len(rm)}" if rm else None)
     cards = [
         _card("Reps", a["rep_count"]),
+        primary,
         _card("Mean velocity", mcv, "m/s"),
         _card("Consistency", adv["consistency"], "%"),
         _card("Velocity loss", adv["vloss"], "%"),

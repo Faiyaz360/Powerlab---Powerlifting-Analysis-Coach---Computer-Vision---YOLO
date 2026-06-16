@@ -97,6 +97,21 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             start_y = float(bar_xy[valid[0], 1])     # where the bar began = the start line
     rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
 
+    # On-video real-time velocity graph: precompute the curve's pixel points once (frame dims fixed).
+    vel_series = analysis.get("bar_velocity_series")
+    graph_pts, graph_box = None, None
+    if vel_series is not None and len(vel_series) >= 2:
+        vs = np.nan_to_num(np.asarray(vel_series, dtype=float))
+        vmax = float(np.max(np.abs(vs))) or 1.0
+        n = len(vs)
+        gx0, gx1 = int(pose.width * 0.05), int(pose.width * 0.95)
+        gy0, gy1 = int(pose.height * 0.81), int(pose.height * 0.97)
+        gmid = (gy0 + gy1) // 2
+        xs = gx0 + (gx1 - gx0) * np.arange(n) // max(1, n - 1)
+        ys = np.clip((gmid - (vs / vmax) * ((gy1 - gy0) / 2) * 0.9).astype(int), gy0, gy1)
+        graph_pts = np.stack([xs, ys], axis=1).astype(np.int32)
+        graph_box = (gx0, gy0, gx1, gy1, gmid)
+
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
         str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), pose.fps, (pose.width, pose.height)
@@ -125,6 +140,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
             _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
             _draw_badge(frame, f, rep_metrics, badge_window)
+            _draw_velocity_graph(frame, graph_pts, graph_box, f)
         writer.write(frame)
         f += 1
 
@@ -281,6 +297,25 @@ def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
     for t, fs, col in rows:
         cv2.putText(frame, t, (x0 + pad, y), cv2.FONT_HERSHEY_SIMPLEX, fs, col, thick, cv2.LINE_AA)
         y += rh
+
+
+def _draw_velocity_graph(frame, pts, box, f):
+    """Burn a compact velocity-vs-time graph onto the bottom of the frame. The curve up to the
+    current frame is bright with a 'now' cursor, the rest faint — so it animates as the video plays
+    (the on-video real-time graph). Points are precomputed; drawing is O(n) via polylines."""
+    if pts is None or box is None:
+        return
+    gx0, gy0, gx1, gy1, gmid = box
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (gx0 - 8, gy0 - 8), (gx1 + 8, gy1 + 8), (18, 18, 22), -1)
+    cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
+    cv2.line(frame, (gx0, gmid), (gx1, gmid), (90, 90, 96), 1, cv2.LINE_AA)   # zero baseline
+    cv2.polylines(frame, [pts], False, (115, 115, 120), 1, cv2.LINE_AA)       # full curve, faint
+    k = min(f + 1, len(pts))
+    if k >= 2:
+        cv2.polylines(frame, [pts[:k]], False, START_LINE, 2, cv2.LINE_AA)    # past curve, bright
+    cx = int(pts[min(f, len(pts) - 1)][0])
+    cv2.line(frame, (cx, gy0), (cx, gy1), WHITE, 1, cv2.LINE_AA)              # 'now' cursor
 
 
 def _draw_badge(frame, f, rep_metrics, window):
