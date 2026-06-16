@@ -32,6 +32,32 @@ def _xy(landmarks, f, idx):
     return int(p[0]), int(p[1])
 
 
+def _body_region(lm, f):
+    """Centre + max plausible radius from the stable torso points. A landmark beyond it is treated
+    as a mis-detection (e.g. a limb thrown to a frame corner by occlusion) and hidden."""
+    core = [lm[f, i, :2] for i in (P.L_SHOULDER, P.R_SHOULDER, P.L_HIP, P.R_HIP)
+            if not np.any(np.isnan(lm[f, i, :2]))]
+    if len(core) < 2:
+        return None
+    center = np.mean(core, axis=0)
+    sp = [lm[f, i, :2] for i in (P.L_SHOULDER, P.R_SHOULDER) if not np.any(np.isnan(lm[f, i, :2]))]
+    hp = [lm[f, i, :2] for i in (P.L_HIP, P.R_HIP) if not np.any(np.isnan(lm[f, i, :2]))]
+    if sp and hp:
+        torso = float(np.hypot(*(np.mean(sp, axis=0) - np.mean(hp, axis=0))))
+    else:
+        torso = float(np.max(np.ptp(np.array(core), axis=0)))
+    return center, max(torso, 1.0) * 3.0
+
+
+def _xy_ok(lm, f, idx, region):
+    """``_xy`` but returns None when the landmark sits implausibly far from the body region."""
+    p = _xy(lm, f, idx)
+    if p is None or region is None:
+        return p
+    center, maxd = region
+    return p if np.hypot(p[0] - center[0], p[1] - center[1]) <= maxd else None
+
+
 def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     """Write an annotated mp4 to ``out_path``."""
     lm = pose.landmarks
@@ -64,8 +90,9 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         if not ok:
             break
         if f < pose.num_frames:
-            _draw_full_skeleton(frame, lm, f)
-            _draw_skeleton(frame, lm, f, chain)
+            region = _body_region(lm, f)
+            _draw_full_skeleton(frame, lm, f, region)
+            _draw_skeleton(frame, lm, f, chain, region)
             _draw_angle(frame, lm, f, joint_idx, primary)
             done = sum(1 for e in rep_end_frames if e <= f)
             cv2.putText(frame, f"Reps: {done}", (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.1, YELLOW, 2)
@@ -93,21 +120,21 @@ _BODY_EDGES = [
 _BODY_JOINTS = sorted({s for e in _BODY_EDGES for s in e})
 
 
-def _draw_full_skeleton(frame, lm, f):
+def _draw_full_skeleton(frame, lm, f, region):
     """Faint full-body skeleton from every available landmark (MediaPipe fills all 33; YOLO/RTMPose
-    fill the COCO subset, so the rest are skipped). The bold analysis chain is drawn over this."""
+    fill the COCO subset). Landmarks that fly far outside the body region (occlusion mis-detects)
+    are hidden, not drawn way off. The bold analysis chain is drawn over this."""
+    pts = {idx: _xy_ok(lm, f, idx, region) for idx in _BODY_JOINTS}
     for a, b in _BODY_EDGES:
-        pa, pb = _xy(lm, f, a), _xy(lm, f, b)
-        if pa and pb:
-            cv2.line(frame, pa, pb, SKELETON, 2, cv2.LINE_AA)
-    for idx in _BODY_JOINTS:
-        p = _xy(lm, f, idx)
+        if pts.get(a) and pts.get(b):
+            cv2.line(frame, pts[a], pts[b], SKELETON, 2, cv2.LINE_AA)
+    for p in pts.values():
         if p:
             cv2.circle(frame, p, 4, ORANGE, -1)
 
 
-def _draw_skeleton(frame, lm, f, chain):
-    pts = [_xy(lm, f, i) for i in chain]
+def _draw_skeleton(frame, lm, f, chain, region):
+    pts = [_xy_ok(lm, f, i, region) for i in chain]
     for a, b in zip(pts, pts[1:]):
         if a and b:
             cv2.line(frame, a, b, GREEN, 3)
