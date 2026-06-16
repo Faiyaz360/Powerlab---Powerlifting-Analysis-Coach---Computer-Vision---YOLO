@@ -3,7 +3,9 @@
 Why: "accurate" must be a number, not a vibe. Add one JSON per clip under eval/groundtruth/
 (see eval/README.md), then run:
 
-    .\.venv\Scripts\python.exe eval\run_eval.py
+    .\.venv\Scripts\python.exe eval\run_eval.py                 # one backend (default yolo)
+    .\.venv\Scripts\python.exe eval\run_eval.py --pose rtmpose  # a specific backend
+    .\.venv\Scripts\python.exe eval\run_eval.py --compare       # side-by-side table of all three
 
 Reports rep-count accuracy and per-rep legal-pass accuracy (squat depth / deadlift lockout).
 Runs the normal pipeline (uses the pose cache, so it's fast and inference-only).
@@ -21,34 +23,27 @@ from src.pipeline import analyze  # noqa: E402
 
 GT_DIR = ROOT / "eval" / "groundtruth"
 LEGAL_KEY = {"squat": "depth_pass", "deadlift": "lockout_pass"}  # the IPF red-light criterion
+BACKENDS = ("mediapipe", "yolo", "rtmpose")
 
 
 def _pred_legal(result, lift):
     return [bool(r[LEGAL_KEY[lift]]) for r in result["analysis"]["rep_metrics"]]
 
 
-def main():
-    ap = argparse.ArgumentParser(description="Score the pipeline against ground-truth labels")
-    ap.add_argument("--pose", default="yolo", choices=["mediapipe", "yolo", "rtmpose"],
-                    help="pose backend to evaluate")
-    args = ap.parse_args()
-
-    files = sorted(GT_DIR.glob("*.json"))
-    if not files:
-        print("No ground-truth files in eval/groundtruth/. Add some (see eval/README.md).")
-        return
-
-    print(f"Pose backend: {args.pose}\n")
+def score_backend(backend, files) -> dict:
+    """Run one backend over every labelled clip and tally rep-count + depth/lockout accuracy."""
     rep_ok = 0
     legal_total = legal_correct = 0
+    per_clip = []
     for f in files:
         gt = json.loads(f.read_text(encoding="utf-8"))
         lift = gt["lift"]
-        res = analyze(str(ROOT / gt["video"]), lift=lift, backend=args.pose)
+        res = analyze(str(ROOT / gt["video"]), lift=lift, backend=backend)
         pred, true = res["rep_count"], gt["true_rep_count"]
         count_ok = pred == true
         rep_ok += int(count_ok)
-        line = f"{f.stem}: reps pred={pred} true={true} {'OK' if count_ok else 'MISS'}"
+        clip = {"name": f.stem, "pred": pred, "true": true, "count_ok": count_ok,
+                "legal_correct": None, "legal_n": None}
 
         gt_pass = gt.get("per_rep_legal_pass")
         if count_ok and gt_pass is not None:
@@ -57,17 +52,72 @@ def main():
                 correct = sum(int(a == b) for a, b in zip(pred_pass, gt_pass))
                 legal_total += len(gt_pass)
                 legal_correct += correct
-                line += f" | depth/lockout {correct}/{len(gt_pass)}"
-        print(line)
+                clip["legal_correct"], clip["legal_n"] = correct, len(gt_pass)
+        per_clip.append(clip)
 
-    n = len(files)
+    return {"backend": backend, "n": len(files), "rep_ok": rep_ok,
+            "legal_correct": legal_correct, "legal_total": legal_total, "per_clip": per_clip}
+
+
+def _rep_str(s):
+    return f"{s['rep_ok']}/{s['n']} ({100 * s['rep_ok'] / s['n']:.0f}%)" if s["n"] else "-"
+
+
+def _legal_str(s):
+    if not s["legal_total"]:
+        return "-"
+    return f"{s['legal_correct']}/{s['legal_total']} ({100 * s['legal_correct'] / s['legal_total']:.0f}%)"
+
+
+def print_single(s):
+    print(f"Pose backend: {s['backend']}\n")
+    for c in s["per_clip"]:
+        line = f"{c['name']}: reps pred={c['pred']} true={c['true']} {'OK' if c['count_ok'] else 'MISS'}"
+        if c["legal_n"]:
+            line += f" | depth/lockout {c['legal_correct']}/{c['legal_n']}"
+        print(line)
     print("\n=== Scorecard ===")
-    print(f"Rep-count accuracy:      {rep_ok}/{n} ({100 * rep_ok / n:.0f}%)")
-    if legal_total:
-        pct = 100 * legal_correct / legal_total
-        print(f"Depth/lockout accuracy:  {legal_correct}/{legal_total} ({pct:.0f}%)")
+    print(f"Rep-count accuracy:      {_rep_str(s)}")
+    print(f"Depth/lockout accuracy:  {_legal_str(s)}"
+          if s["legal_total"] else "Depth/lockout accuracy:  (no aligned reps)")
+
+
+def print_compare(scores):
+    print("=== Backend comparison ===\n")
+    hdr = f"{'backend':<12}{'rep acc':>16}{'depth/lockout':>18}"
+    print(hdr)
+    print("-" * len(hdr))
+    for s in scores:
+        if s.get("error"):
+            print(f"{s['backend']:<12}{'ERROR: ' + s['error'][:30]:>34}")
+        else:
+            print(f"{s['backend']:<12}{_rep_str(s):>16}{_legal_str(s):>18}")
+    print("\nPick by the numbers — weight the CLEAN side-on clips most (off-axis ones are "
+          "confidence-flagged anyway).")
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Score the pipeline against ground-truth labels")
+    ap.add_argument("--pose", default="yolo", choices=list(BACKENDS), help="pose backend to evaluate")
+    ap.add_argument("--compare", action="store_true",
+                    help="run every backend and print a side-by-side table")
+    args = ap.parse_args()
+
+    files = sorted(GT_DIR.glob("*.json"))
+    if not files:
+        print("No ground-truth files in eval/groundtruth/. Add some (see eval/README.md).")
+        return
+
+    if args.compare:
+        scores = []
+        for b in BACKENDS:
+            try:
+                scores.append(score_backend(b, files))
+            except Exception as exc:  # a missing backend dep shouldn't kill the whole comparison
+                scores.append({"backend": b, "error": str(exc)})
+        print_compare(scores)
     else:
-        print("Depth/lockout accuracy:  (no aligned reps — fill per_rep_legal_pass + match counts)")
+        print_single(score_backend(args.pose, files))
 
 
 if __name__ == "__main__":
