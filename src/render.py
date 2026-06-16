@@ -18,6 +18,7 @@ YELLOW = (255, 255, 0)
 MAGENTA = (255, 0, 255)
 SKELETON = (230, 230, 230)  # faint full-body skeleton, under the bold analysis chain
 PATH_FADED = (150, 150, 150)  # completed reps drawn faint grey under the bright current-rep path
+START_LINE = (60, 200, 255)   # amber 'start' reference line (BGR)
 
 # which landmark labels the primary angle, per side
 _PRIMARY_JOINT = {
@@ -82,6 +83,18 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     badge_window = max(1, int(pose.fps * 0.3))  # show each badge ~0.3s around its frame
     bar_speeds, bar_vmax = _bar_speeds(bar_xy)  # per-frame plate speed -> colour the bar path
 
+    # WL-style on-video overlay data: live speed HUD + a 'start' reference line at the bar's origin
+    fps = pose.fps
+    scale = analysis.get("scale_m_per_px")
+    bar_velocity = analysis.get("bar_velocity") or []
+    bar_reps = analysis.get("bar_reps") or []
+    start_y = None
+    if bar_xy is not None:
+        valid = np.where(~np.isnan(bar_xy[:, 1]))[0]
+        if len(valid):
+            start_y = float(bar_xy[valid[0], 1])     # where the bar began = the start line
+    rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
+
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
         str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), pose.fps, (pose.width, pose.height)
@@ -102,9 +115,13 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
                 else:                                      # "side": camera-side sagittal points only
                     _draw_side_skeleton(frame, lm, f, side, region)
                 _draw_angle(frame, lm, f, joint_idx, primary)
+            if start_y is not None:
+                _draw_start_line(frame, start_y)
             _draw_bar_path(frame, bar_xy, f, bar_speeds, bar_vmax, cur_start)
             done = sum(1 for e in rep_end_frames if e <= f)
-            cv2.putText(frame, f"Reps: {done}", (20, 45), cv2.FONT_HERSHEY_SIMPLEX, 1.1, YELLOW, 2)
+            speed_ms = (bar_speeds[f] * fps * scale) if (bar_speeds is not None and scale) else None
+            mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
+            _draw_hud(frame, done, speed_ms, mean_ms)
             _draw_badge(frame, f, rep_metrics, badge_window)
         writer.write(frame)
         f += 1
@@ -224,6 +241,41 @@ def _draw_bar_path(frame, bar_xy, f, speeds, vmax, cur_start=0):
         last = p
     if last is not None:
         cv2.circle(frame, last, 6, WHITE, -1)
+
+
+def _draw_start_line(frame, start_y):
+    """Amber dashed horizontal reference at the bar's starting height + a 'start' label chip
+    (WL-style) — shows how far the bar drifts from where the set began."""
+    w = frame.shape[1]
+    y = int(start_y)
+    for x in range(0, w, 28):
+        cv2.line(frame, (x, y), (min(x + 16, w), y), START_LINE, 2, cv2.LINE_AA)  # amber dashes
+    s = max(0.5, w / 1500.0)
+    (tw, th), _ = cv2.getTextSize("start", cv2.FONT_HERSHEY_SIMPLEX, s, 2)
+    cv2.rectangle(frame, (6, max(0, y - th - 12)), (6 + tw + 10, max(th + 4, y - 2)), (30, 30, 34), -1)
+    cv2.putText(frame, "start", (11, max(th, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, s, START_LINE, 2, cv2.LINE_AA)
+
+
+def _draw_hud(frame, rep_no, speed_ms, mean_ms):
+    """Translucent top-left panel with live metrics (WL-style on-video readout): rep count, the bar's
+    current speed, and the last rep's mean concentric velocity. Text scales with the frame size."""
+    s = max(0.6, frame.shape[1] / 1200.0)
+    lines = [f"REP {rep_no}"]
+    if speed_ms is not None:
+        lines.append(f"{speed_ms:.2f} m/s now")
+    if mean_ms is not None:
+        lines.append(f"{mean_ms:.2f} m/s mean")
+    lh, pad = int(34 * s), int(12 * s)
+    x0, y0 = int(16 * s), int(16 * s)
+    box_w, box_h = int(232 * s), pad * 2 + lh * len(lines)
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x0, y0), (x0 + box_w, y0 + box_h), (18, 18, 22), -1)
+    cv2.addWeighted(overlay, 0.55, frame, 0.45, 0, frame)
+    y = y0 + pad + int(20 * s)
+    for i, t in enumerate(lines):
+        cv2.putText(frame, t, (x0 + int(12 * s), y), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7 * s, YELLOW if i == 0 else WHITE, max(1, int(2 * s)), cv2.LINE_AA)
+        y += lh
 
 
 def _draw_badge(frame, f, rep_metrics, window):

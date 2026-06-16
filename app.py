@@ -71,7 +71,16 @@ footer {display: none !important;}
          margin: 14px 0 6px; letter-spacing: .02em;}
 .fl-narrow {max-width: 560px; margin: 0 auto;}
 #fl-video, #fl-video video {background: #0b0b0c !important; border-radius: 14px;}
+#fl-video video {width: 100%; height: auto;}   /* fill width, keep aspect (portrait fills the phone) */
+#fl-seed, #fl-seed img {max-height: 70vh; object-fit: contain;}  /* tall marking frame stays on-screen */
 .fl-narrow .table-wrap {border-radius: 12px;}
+/* Mobile: edge-to-edge, full-width blocks, smaller stat numbers, scrollable table */
+@media (max-width: 600px) {
+  .gradio-container {max-width: 100% !important; padding: 0 8px !important;}
+  .fl-narrow, .fl-video-wrap {max-width: 100% !important;}
+  .fl-value {font-size: 22px;}
+  .fl-narrow .table-wrap {overflow-x: auto;}
+}
 """
 
 
@@ -401,7 +410,7 @@ with gr.Blocks(title="Form Lab") as demo:
                     trim_end = gr.Slider(0, 1, value=1, step=0.1, label="End (s)")
                 trim_btn = gr.Button("Apply trim", size="sm")
             seed_img = gr.Image(label="Mark the plate — align the circle", type="numpy",
-                                interactive=False, height=360)
+                                interactive=False, elem_id="fl-seed")
             seed_instr = gr.Markdown(SEED_INSTR)
             with gr.Accordion("Adjust by hand (optional)", open=False):
                 with gr.Row():
@@ -412,27 +421,26 @@ with gr.Blocks(title="Form Lab") as demo:
                 lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
                 load_in = gr.Number(label="Bar load (kg)", value=None)
             skel_in = gr.Radio(["Side points", "All points", "None"], value="Side points",
-                               label="Skeleton overlay (Side = side-view joints; None = bar path only)")
+                               label="Skeleton", info="Side = side-view joints · None = bar path only")
             run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
         # --- results: verdict banner, centred video, then the stat-card grid (auto-reflows) ---
         verdict_out = gr.HTML(elem_classes="fl-narrow")
         with gr.Column(elem_classes="fl-video-wrap"):
-            video_out = gr.Video(label="Annotated", show_label=False, autoplay=True, height=460,
+            video_out = gr.Video(label="Annotated", show_label=False, autoplay=True,
                                  elem_id="fl-video")
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
         reps_table = gr.Dataframe(headers=["Rep", "Mean m/s", "Peak m/s", "ROM m", "Time s"],
                                   interactive=False, elem_classes="fl-narrow")
+        vel_out = gr.Plot(label="Velocity per rep", show_label=False, elem_classes="fl-narrow")
         cards_out = gr.HTML()
         gr.HTML("<div class='fl-sec'>STRENGTH</div>")
         strength_out = gr.HTML()
 
         # --- extra detail tucked away so the main screen stays uncluttered ---
         with gr.Accordion("Charts & full report", open=False):
-            with gr.Row():
-                angle_out = gr.Plot(label="Joint angle")
-                vel_out = gr.Plot(label="Velocity per rep")
+            angle_out = gr.Plot(label="Joint angle")
             report_out = gr.Markdown()
 
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
