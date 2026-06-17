@@ -21,16 +21,19 @@ def test_speed_color_clamps_out_of_range():
     assert render._speed_color(2.0) == (0, 255, 0)
 
 
-def test_start_anchor_uses_first_rep_not_video_start():
-    """The 'start' reference lines anchor to the first rep (squat = first lockout/top, deadlift =
-    first floor/bottom), not the walkout at the video start — so a squat's centre line isn't pinned
-    to the rack. No reps -> fall back to the first tracked frame."""
-    bar_xy = np.full((50, 2), 100.0)
+def test_start_anchor_is_the_literal_lift_start():
+    """The 'start' lines anchor to the literal moment the lift starts in rep 1: a squat's last frame
+    near the standing top before it drops; a deadlift's floor valley. Not the walkout at the video
+    start — so a squat's centre line isn't pinned to the rack. No reps -> first tracked frame."""
+    bar_xy = np.full((50, 2), 100.0)                         # y=100 = standing height
     bar_xy[0:5, 0] = 300.0                                   # walkout: video-start X is off at the rack
+    bar_xy[16:21, 1] = [130, 160, 190, 200, 200]            # descending into the bottom at frame 20
     reps = [{"bottom": 20, "top": 30}]
     valid = np.arange(50)
-    assert render._start_anchor_frame(bar_xy, reps, "squat", valid) == 30      # squat -> first lockout
-    assert render._start_anchor_frame(bar_xy, reps, "deadlift", valid) == 20   # deadlift -> first floor
+    f = render._start_anchor_frame(bar_xy, reps, "squat", valid)
+    assert f == 15                                           # last frame still standing before the drop
+    assert bar_xy[f, 0] == 100.0                             # post-walkout (rack X=300 skipped)
+    assert render._start_anchor_frame(bar_xy, reps, "deadlift", valid) == 20   # deadlift -> floor/liftoff
     assert render._start_anchor_frame(bar_xy, [], "squat", valid) == 0         # no reps -> video start
 
 

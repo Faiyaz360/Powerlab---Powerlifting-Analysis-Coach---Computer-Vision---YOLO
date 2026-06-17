@@ -58,16 +58,24 @@ def _xy_ok(lm, f, idx, region):
 
 
 def _start_anchor_frame(bar_xy, bar_reps, lift, valid):
-    """Frame the 'start' reference lines (amber height + white centre) anchor to: the FIRST REP, not
-    the video start. The bar at the very first tracked frame is mid-walkout/setup — a squat walks
-    back from the rack, so the centre line would sit at the rack and read fake sideways drift. Squat
-    home = the first lockout (standing); deadlift home = the first floor position (liftoff). Falls
-    back to the first tracked frame when there are no reps. Pure — unit-tested."""
-    if bar_reps:
-        a = int(bar_reps[0]["bottom"] if lift == "deadlift" else bar_reps[0]["top"])
-        if 0 <= a < len(bar_xy) and not np.any(np.isnan(bar_xy[a])):
-            return a
-    return int(valid[0])
+    """Frame the 'start' reference lines (amber height + white centre) anchor to: the literal MOMENT
+    THE LIFT STARTS in rep 1 — the squat begins descending, the deadlift breaks the floor — not the
+    video start (mid-walkout/setup, which pins a squat's centre line to the rack and reads fake
+    drift). Deadlift: the first floor valley (bar about to rise). Squat: the last frame still near the
+    standing top before the first descent (the bar about to drop). Falls back to the first tracked
+    frame when there are no reps. ``bar_xy[:,1]`` is vertical px, down = larger. Pure — unit-tested."""
+    if not bar_reps:
+        return int(valid[0])
+    b = int(bar_reps[0]["bottom"])
+    if lift == "deadlift":
+        return b if 0 <= b < len(bar_xy) else int(valid[0])   # floor valley = the bar breaks the floor
+    y = bar_xy[:b + 1, 1].astype(float)                       # squat: video start -> first deep bottom
+    if y.size == 0 or np.all(np.isnan(y)):
+        return int(valid[0])
+    ytop = float(np.nanmin(y))                                # standing = highest bar = smallest y
+    rom = float(np.nanmax(y)) - ytop
+    near_top = np.where(y <= ytop + 0.1 * max(rom, 1.0))[0]   # frames still near the standing top
+    return int(near_top[-1]) if len(near_top) else int(valid[0])   # last one = the descent start
 
 
 def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
