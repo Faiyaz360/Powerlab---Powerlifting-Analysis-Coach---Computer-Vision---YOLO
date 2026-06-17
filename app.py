@@ -101,6 +101,8 @@ footer {display: none !important;}
 .fl-cap {text-align: center; font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px;}
 .fl-share-note {font-size: 13px; color: var(--body-text-color-subdued); padding: 6px 2px; line-height: 1.5;}
 .fl-share-note b {color: #8b7bf0;}
+#fl-banner {max-width: 760px; margin: 6px auto 4px; padding: 0; border: none; background: transparent;}
+#fl-banner svg, #fl-banner img {width: 100%; height: auto; display: block; border-radius: 14px;}
 .fl-guide {font-size: 13.5px; line-height: 1.7; color: var(--body-text-color);}
 .fl-guide b {color: #8b7bf0;}
 .fl-guide-note {display: inline-block; margin-top: 6px; color: var(--body-text-color-subdued);}
@@ -699,18 +701,17 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     csv_path = _session_csv(a, sc, s, adv, name_clean, bar_load, name)
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
 
-    # Stash everything the (lazy) Share button needs, so making a clip never re-runs analysis.
+    # Share caption (cheap text). The Share-to-apps button shares the annotated video already on
+    # screen + this caption, so no second clip is ever rendered (no extra GPU, nothing to fail).
     mcv, peak = _first_velocity(a)
     rm = a.get("rep_metrics") or []
     legal_key = "depth_pass" if lift == "squat" else "lockout_pass"
-    share_meta = {
-        "video": result["paths"]["annotated_video"],
+    caption = share.share_caption({
         "lift": lift, "load": bar_load,
         "score": (sc or {}).get("score"), "grade": (sc or {}).get("grade"),
-        "reps": a.get("rep_count"),
         "legal_pass": any(r.get(legal_key) for r in rm) if rm else None,
-        "peak_ms": peak, "mean_ms": mcv,
-    }
+        "peak_ms": peak,
+    })
     return (
         result["paths"]["annotated_video"],
         _coaching_html(result["cues"]),
@@ -725,40 +726,31 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
         charts.velocity_bars(a.get("bar_velocity") or []),
         charts.bar_path(a),
         csv_path,
-        share_meta,
+        caption,
     )
 
 
 WEBSHARE_JS = """
 async () => {
-  const v = document.querySelector('#fl-share-video video');
+  const v = document.querySelector('#fl-video video');
   const capEl = document.querySelector('#fl-share-caption textarea');
   const caption = capEl ? capEl.value : '';
-  if (!v || !v.src) { alert('Make a share clip first — press “Make a share clip”.'); return; }
+  if (!v || !v.src) { alert('Analyse a lift first, then share the annotated video.'); return; }
   try {
     const resp = await fetch(v.src);
     const blob = await resp.blob();
-    const file = new File([blob], 'formlab.mp4', {type: blob.type || 'video/mp4'});
+    const file = new File([blob], 'powerlab.mp4', {type: blob.type || 'video/mp4'});
     if (navigator.canShare && navigator.canShare({files: [file]})) {
       await navigator.share({files: [file], text: caption});
     } else if (navigator.share) {
       await navigator.share({text: caption});
-      alert('Shared the caption. Attach the downloaded clip to finish your post.');
+      alert('Shared the caption. Attach the video from the player (↓) to finish your post.');
     } else {
-      alert('Sharing is not supported in this browser — download the clip (↓ on the player) and post it manually.');
+      alert('Sharing is not supported in this browser — download the video (↓ on the player) and post it manually.');
     }
   } catch (e) {}
 }
 """
-
-
-def on_share(meta):
-    """Lazily build the portrait share clip + caption from the stashed analysis meta (no re-analysis)."""
-    if not meta or not meta.get("video"):
-        raise gr.Error("Analyse a lift first, then make a share clip.")
-    clip = share.make_share_clip(meta["video"], OUT_DIR, lift=meta.get("lift") or "squat",
-                                 score=meta.get("score"), grade=meta.get("grade"))
-    return clip, share.share_caption(meta)
 
 
 def _style_dark(fig, ax):
@@ -884,9 +876,31 @@ def on_history_open(metric: str, lift: str, name: str):
 
 # ---------------------------------------------------------------- UI
 
-with gr.Blocks(title="Form Lab") as demo:
+# Header banner: the owner's generated PNG if present (drop it at assets/banner.png), else a crisp
+# SVG wordmark fallback so the app always has a branded header. SVG = mobile-safe (scales, no overflow).
+BANNER_PNG = "assets/banner.png"
+BANNER_SVG = """<svg viewBox="0 0 1000 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="PowerLab">
+<circle cx="70" cy="70" r="120" fill="#5b3fb0" opacity="0.18"/>
+<text x="40" y="135" font-family="Arial, sans-serif" font-size="88" font-weight="800" letter-spacing="1">
+<tspan fill="#f4f3f7">POWER</tspan><tspan fill="#8b7bf0"> LAB</tspan></text>
+<text x="44" y="178" font-family="Arial, sans-serif" font-size="19" letter-spacing="7" fill="#8d8a99">AI POWERLIFTING FORM ANALYSIS</text>
+<g stroke="#8b7bf0" stroke-width="3" fill="none">
+<line x1="680" y1="120" x2="930" y2="120"/>
+<ellipse cx="690" cy="120" rx="13" ry="46"/><ellipse cx="712" cy="120" rx="11" ry="38"/>
+<ellipse cx="920" cy="120" rx="13" ry="46"/><ellipse cx="898" cy="120" rx="11" ry="38"/>
+</g>
+<path d="M965 40 C950 80, 950 150, 962 200" stroke="#8b7bf0" stroke-width="2.5" fill="none" stroke-dasharray="5 6"/>
+<circle cx="958" cy="64" r="4" fill="#8b7bf0"/><circle cx="956" cy="120" r="4" fill="#8b7bf0"/><circle cx="960" cy="178" r="4" fill="#8b7bf0"/>
+<text x="960" y="222" text-anchor="end" font-family="Arial, sans-serif" font-size="16" fill="#7a7788">@Faiyaz360</text>
+</svg>"""
+
+with gr.Blocks(title="PowerLab") as demo:
     gr.HTML(GLOBAL_STYLE, elem_id="fl-gstyle")   # unscoped global CSS — reaches the page root on Spaces
-    gr.Markdown("# Form Lab")
+    if os.path.exists(BANNER_PNG):
+        gr.Image(BANNER_PNG, show_label=False, container=False, interactive=False,
+                 show_download_button=False, elem_id="fl-banner")
+    else:
+        gr.HTML(f"<div id='fl-banner'>{BANNER_SVG}</div>")
     with gr.Tab("Analyse"):
         # --- inputs: one clean centred column (mobile-first; scales to desktop) ---
         with gr.Column(elem_classes="fl-narrow"):
@@ -946,15 +960,13 @@ with gr.Blocks(title="Form Lab") as demo:
 
         gr.HTML("<div class='fl-sec'>SHARE</div>")
         with gr.Column(elem_classes="fl-narrow"):
-            share_btn = gr.Button("Make a share clip", size="sm")
-            share_video = gr.Video(show_label=False, elem_id="fl-share-video")
+            webshare_btn = gr.Button("Share to apps ↗", variant="primary", size="sm")
+            share_note = gr.HTML(
+                "<div class='fl-share-note'>\U0001F4F2 Shares the <b>annotated video above</b> to your "
+                "phone's apps — tap, then pick Instagram / TikTok / WhatsApp. Tag <b>@projectfyz</b> · "
+                "caption below to copy. (Desktop: download the video with ↓ on the player.)</div>")
             share_caption_box = gr.Textbox(label="Caption — select all & copy", lines=5,
                                            elem_id="fl-share-caption")
-            share_note = gr.HTML(
-                "<div class='fl-share-note'>\U0001F4F2 Tag <b>@projectfyz</b> when you post · "
-                "on your phone tap <b>Share to apps</b>; on desktop download the clip "
-                "(↓ on the player)</div>")
-            webshare_btn = gr.Button("Share to apps ↗", size="sm")
 
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
         reps_table = gr.Dataframe(
@@ -977,7 +989,6 @@ with gr.Blocks(title="Form Lab") as demo:
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
         source_state = gr.State(None)   # full transcoded clip (trim source, non-cumulative)
         tap_state = gr.State(0)         # two-tap marker: 0 = next tap sets centre, 1 = sets radius
-        share_state = gr.State(None)    # share meta (clip path + numbers) from the last analysis
     with gr.Tab("History") as history_tab:
         with gr.Row():
             hist_lifter = gr.Dropdown([""], value="", label="Lifter", allow_custom_value=True)
@@ -1020,11 +1031,9 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
                   [video_out, coach_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
-                   report_out, reps_table, mcv_out, path_out, csv_out, share_state],
+                   report_out, reps_table, mcv_out, path_out, csv_out, share_caption_box],
                   show_progress_on=[video_out])   # one progress bar (on the video), not one per output
-    share_btn.click(on_share, [share_state], [share_video, share_caption_box],
-                    show_progress_on=[share_video])
-    webshare_btn.click(None, None, None, js=WEBSHARE_JS)   # pure client-side Web Share API call
+    webshare_btn.click(None, None, None, js=WEBSHARE_JS)   # client-side Web Share of the annotated video
     _hist_in = [metric_in, hist_lift, hist_lifter]
     _hist_out = [hist_table, trend_out, bests_out, lv_chart, lv_readout]
     for _c in (metric_in, hist_lift, hist_lifter):

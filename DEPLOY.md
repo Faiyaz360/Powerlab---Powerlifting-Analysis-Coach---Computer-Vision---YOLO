@@ -1,4 +1,4 @@
-# Deploying Form Lab to Hugging Face Spaces
+# Deploying PowerLab to Hugging Face Spaces
 
 The app is packaged to run on a **free CPU Space**. This covers the one-time setup, the push,
 and the GPU upgrade path.

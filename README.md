@@ -1,5 +1,5 @@
 ---
-title: Form Lab
+title: PowerLab
 emoji: 🏋️
 colorFrom: blue
 colorTo: indigo
