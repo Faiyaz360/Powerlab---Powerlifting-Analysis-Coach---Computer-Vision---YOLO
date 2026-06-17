@@ -32,6 +32,17 @@ def test_offaxis_ratio_large_when_front_on():
     assert conf.offaxis_ratio(lm) > 0.5
 
 
+def test_offaxis_ratio_robust_when_bent_over_side_on():
+    """A dead-side-on but BENT-OVER pose (deadlift): L/R overlap in x, torso near-horizontal. The old
+    vertical-height denominator exploded the ratio (false off-axis); torso-length keeps it low."""
+    lm = np.full((1, 33, 3), np.nan)
+    lm[0, P.L_SHOULDER] = [0.30, 0.50, 1.0]      # shoulders forward, hips back, ~same height
+    lm[0, P.R_SHOULDER] = [0.31, 0.50, 1.0]      # L/R overlap in x = side-on
+    lm[0, P.L_HIP] = [0.60, 0.51, 1.0]
+    lm[0, P.R_HIP] = [0.61, 0.51, 1.0]
+    assert conf.offaxis_ratio(lm) < conf.SIDEON_RATIO_MAX   # side-on, not false-flagged
+
+
 def test_assess_high_confidence_side_on():
     out = conf.assess(_Pose(_frame(0.5, 0.5, 0.5, 0.5)))
     assert out["axis_ok"] is True

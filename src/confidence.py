@@ -17,10 +17,15 @@ _KEY_LANDMARKS = [P.L_SHOULDER, P.R_SHOULDER, P.L_HIP, P.R_HIP, P.L_KNEE, P.R_KN
 
 
 def offaxis_ratio(landmarks: np.ndarray) -> float:
-    """Mean L/R horizontal separation of shoulders+hips, divided by torso height.
+    """Mean L/R horizontal separation of shoulders+hips, divided by the TORSO LENGTH.
 
     Side-on -> ~0 (the near and far landmarks overlap in x). Front/angled -> large. The ratio is
     scale-invariant, so it works for normalized or pixel coordinates.
+
+    Normalise by the full torso LENGTH (shoulder-centre -> hip-centre, Euclidean), NOT just its
+    vertical extent: when the lifter is bent over (a deadlift, or the bottom of a squat) the torso is
+    near-horizontal, so a vertical-height denominator collapses toward zero and blows the ratio up —
+    which used to false-flag a dead-side-on deadlift as off-axis. Torso length is posture-independent.
     """
     ratios = []
     for f in range(len(landmarks)):
@@ -32,10 +37,12 @@ def offaxis_ratio(landmarks: np.ndarray) -> float:
             continue
         sh_sep = abs(lsh[0] - rsh[0])
         hip_sep = abs(lhip[0] - rhip[0])
-        torso_h = abs((lsh[1] + rsh[1]) / 2 - (lhip[1] + rhip[1]) / 2)
-        if torso_h < 1e-6:
+        dx = (lsh[0] + rsh[0]) / 2 - (lhip[0] + rhip[0]) / 2
+        dy = (lsh[1] + rsh[1]) / 2 - (lhip[1] + rhip[1]) / 2
+        torso_len = float(np.hypot(dx, dy))
+        if torso_len < 1e-6:
             continue
-        ratios.append(((sh_sep + hip_sep) / 2) / torso_h)
+        ratios.append(((sh_sep + hip_sep) / 2) / torso_len)
     return float(np.mean(ratios)) if ratios else float("nan")
 
 
