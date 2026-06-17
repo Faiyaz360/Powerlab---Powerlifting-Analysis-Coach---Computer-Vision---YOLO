@@ -18,7 +18,7 @@ import numpy as np
 
 from src import advanced_metrics as am
 from src import barbell, charts, confidence as conf, history, marking, media, pipeline
-from src import plate_dataset, score
+from src import plate_dataset, score, share
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -99,6 +99,8 @@ footer {display: none !important;}
 .fl-hint {color: var(--body-text-color-subdued); font-size: 14px; padding: 8px 2px;}
 .fl-video-wrap {max-width: 460px; margin: 0 auto;}
 .fl-cap {text-align: center; font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px;}
+.fl-share-note {font-size: 13px; color: var(--body-text-color-subdued); padding: 6px 2px; line-height: 1.5;}
+.fl-share-note b {color: #8b7bf0;}
 .fl-sec {font-size: 13px; font-weight: 600; color: var(--body-text-color-subdued);
          margin: 14px 0 6px; letter-spacing: .02em;}
 .fl-narrow {max-width: 560px; margin: 0 auto;}
@@ -687,6 +689,19 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     _snapshot_db()   # persist the leaderboard to the mounted bucket (no-op if none)
     csv_path = _session_csv(a, sc, s, adv, name_clean, bar_load, name)
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
+
+    # Stash everything the (lazy) Share button needs, so making a clip never re-runs analysis.
+    mcv, peak = _first_velocity(a)
+    rm = a.get("rep_metrics") or []
+    legal_key = "depth_pass" if lift == "squat" else "lockout_pass"
+    share_meta = {
+        "video": result["paths"]["annotated_video"],
+        "lift": lift, "load": bar_load,
+        "score": (sc or {}).get("score"), "grade": (sc or {}).get("grade"),
+        "reps": a.get("rep_count"),
+        "legal_pass": any(r.get(legal_key) for r in rm) if rm else None,
+        "peak_ms": peak, "mean_ms": mcv,
+    }
     return (
         result["paths"]["annotated_video"],
         _coaching_html(result["cues"]),
@@ -701,7 +716,40 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
         charts.velocity_bars(a.get("bar_velocity") or []),
         charts.bar_path(a),
         csv_path,
+        share_meta,
     )
+
+
+WEBSHARE_JS = """
+async () => {
+  const v = document.querySelector('#fl-share-video video');
+  const capEl = document.querySelector('#fl-share-caption textarea');
+  const caption = capEl ? capEl.value : '';
+  if (!v || !v.src) { alert('Make a share clip first — press “Make a share clip”.'); return; }
+  try {
+    const resp = await fetch(v.src);
+    const blob = await resp.blob();
+    const file = new File([blob], 'formlab.mp4', {type: blob.type || 'video/mp4'});
+    if (navigator.canShare && navigator.canShare({files: [file]})) {
+      await navigator.share({files: [file], text: caption});
+    } else if (navigator.share) {
+      await navigator.share({text: caption});
+      alert('Shared the caption. Attach the downloaded clip to finish your post.');
+    } else {
+      alert('Sharing is not supported in this browser — download the clip (↓ on the player) and post it manually.');
+    }
+  } catch (e) {}
+}
+"""
+
+
+def on_share(meta):
+    """Lazily build the portrait share clip + caption from the stashed analysis meta (no re-analysis)."""
+    if not meta or not meta.get("video"):
+        raise gr.Error("Analyse a lift first, then make a share clip.")
+    clip = share.make_share_clip(meta["video"], OUT_DIR, lift=meta.get("lift") or "squat",
+                                 score=meta.get("score"), grade=meta.get("grade"))
+    return clip, share.share_caption(meta)
 
 
 def _trend_fig(series, metric):
@@ -801,6 +849,19 @@ with gr.Blocks(title="Form Lab") as demo:
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
         gr.HTML("<div class='fl-sec'>AI COACH</div>")
         coach_out = gr.HTML(elem_classes="fl-narrow")
+
+        gr.HTML("<div class='fl-sec'>SHARE</div>")
+        with gr.Column(elem_classes="fl-narrow"):
+            share_btn = gr.Button("Make a share clip", size="sm")
+            share_video = gr.Video(show_label=False, elem_id="fl-share-video")
+            share_caption_box = gr.Textbox(label="Caption — select all & copy", lines=5,
+                                           elem_id="fl-share-caption")
+            share_note = gr.HTML(
+                "<div class='fl-share-note'>\U0001F4F2 Tag <b>@projectfyz</b> when you post · "
+                "on your phone tap <b>Share to apps</b>; on desktop download the clip "
+                "(↓ on the player)</div>")
+            webshare_btn = gr.Button("Share to apps ↗", size="sm")
+
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
         reps_table = gr.Dataframe(
             headers=["Rep", "Con s", "Vel m/s", "Peak m/s", "Ecc s", "ROM m", "Zone"],
@@ -822,6 +883,7 @@ with gr.Blocks(title="Form Lab") as demo:
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
         source_state = gr.State(None)   # full transcoded clip (trim source, non-cumulative)
         tap_state = gr.State(0)         # two-tap marker: 0 = next tap sets centre, 1 = sets radius
+        share_state = gr.State(None)    # share meta (clip path + numbers) from the last analysis
     with gr.Tab("History") as history_tab:
         with gr.Row():
             hist_lifter = gr.Dropdown([""], value="", label="Lifter", allow_custom_value=True)
@@ -861,8 +923,11 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
                   [video_out, coach_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
-                   report_out, reps_table, mcv_out, path_out, csv_out],
+                   report_out, reps_table, mcv_out, path_out, csv_out, share_state],
                   show_progress_on=[video_out])   # one progress bar (on the video), not one per output
+    share_btn.click(on_share, [share_state], [share_video, share_caption_box],
+                    show_progress_on=[share_video])
+    webshare_btn.click(None, None, None, js=WEBSHARE_JS)   # pure client-side Web Share API call
     _hist_in = [metric_in, hist_lift, hist_lifter]
     _hist_out = [hist_table, trend_out, bests_out]
     for _c in (metric_in, hist_lift, hist_lifter):
