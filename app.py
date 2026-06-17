@@ -231,6 +231,13 @@ tbody td, .table td {background: transparent !important; border-color: rgba(255,
 .fl-bad {background: rgba(248,113,113,.14) !important; color: #fca5a5 !important;}
 /* active tab: light text, purple underline */
 .tab-nav button.selected {color: #d7d2ff !important; border-bottom-color: #8b7bf0 !important;}
+/* MEDIA NEVER OVERFLOWS ITS COLUMN. gr.Plot renders matplotlib as a wide PNG (figsize ~9in -> ~900px)
+   and the seed frame is full-res; unconstrained, they expand the page AFTER they render ("starts
+   fine then expands"). Clamp every image/canvas/video to its container. (scoped to `.contain ...`) */
+img, canvas {max-width: 100% !important; height: auto !important;}
+video {max-width: 100% !important;}
+.svelte-plot, .js-plotly-plot, .plotly {max-width: 100% !important;}
+
 /* mobile. css= is scoped by Gradio to `.contain ...`, so `*` here = `.contain *` — which lets EVERY
    content element shrink. That collapses the container's min-content so the flex container fits the
    viewport even if HEAD's ancestor rule doesn't apply (e.g. on Spaces). Belt-and-suspenders. */
