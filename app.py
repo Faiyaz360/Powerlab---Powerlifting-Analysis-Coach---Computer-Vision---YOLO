@@ -118,6 +118,12 @@ footer {display: none !important;}
 .fl-bar {font-size: 11px; color: var(--body-text-color-subdued);}
 .fl-bar i {display: block; height: 6px; border-radius: 3px; background: rgba(37,138,221,.18); margin-top: 3px;}
 .fl-bar i b {display: block; height: 100%; background: #2b82dd; border-radius: 3px;}
+/* AI coach panel — prominent, right under the video */
+.fl-coach {background: var(--block-background-fill); border: 1px solid var(--border-color-primary);
+           border-left: 4px solid #f5a623; border-radius: 16px; padding: 16px 20px; margin: 4px 0;}
+.fl-coach p {margin: 0 0 10px; line-height: 1.55; font-size: 15px; color: var(--body-text-color);}
+.fl-coach p:first-child {font-weight: 600;}   /* the opener / compliment pops */
+.fl-coach p:last-child {margin-bottom: 0;}
 /* leaderboard */
 .lb {display: flex; flex-direction: column; gap: 8px;}
 .lb-row {display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
@@ -332,6 +338,18 @@ def _strength_html(s) -> str:
 
 _SCORE_BARS = [("Legal", "legality"), ("Technique", "technique"), ("Bar path", "bar_path"),
                ("Control", "control"), ("Consistency", "consistency")]
+
+
+def _coaching_html(cues) -> str:
+    """Prominent AI-coaching panel shown right under the video (never hidden in an accordion).
+
+    Renders the coach's lines — opener (compliment), the fix cues, then the forward-looking close —
+    as a stacked card so it reads like a coach talking between sets.
+    """
+    if not cues:
+        return ""
+    lines = "".join(f"<p>{escape(c)}</p>" for c in cues)
+    return f"<div class='fl-coach'>{lines}</div>"
 
 
 def _score_html(sc) -> str:
@@ -576,6 +594,7 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
     return (
         result["paths"]["annotated_video"],
+        _coaching_html(result["cues"]),
         _verdict_html(a, c),
         _score_html(sc),
         _cards_html(a, adv),
@@ -682,6 +701,8 @@ with gr.Blocks(title="Form Lab") as demo:
             video_out = gr.Video(label="Annotated", show_label=False, autoplay=True,
                                  elem_id="fl-video")
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
+        gr.HTML("<div class='fl-sec'>AI COACH</div>")
+        coach_out = gr.HTML(elem_classes="fl-narrow")
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
         reps_table = gr.Dataframe(
             headers=["Rep", "Con s", "Vel m/s", "Peak m/s", "Ecc s", "ROM m", "Zone"],
@@ -741,7 +762,7 @@ with gr.Blocks(title="Form Lab") as demo:
     run_btn.click(analyze,
                   [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
-                  [video_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
+                  [video_out, coach_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
                    report_out, reps_table, mcv_out, path_out, csv_out],
                   show_progress_on=[video_out])   # one progress bar (on the video), not one per output
     _hist_in = [metric_in, hist_lift, hist_lifter]

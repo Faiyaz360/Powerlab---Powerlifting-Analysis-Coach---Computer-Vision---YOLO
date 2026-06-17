@@ -27,5 +27,5 @@ spaces                  # Hugging Face ZeroGPU runtime (the @spaces.GPU decorato
 # --- Phase 4: barbell tracking (add later) ---
 # ultralytics>=8.3      # YOLO11 plate detection
 
-# --- Phase 5: LLM coaching phrasing (add later) ---
-# anthropic>=0.40       # Claude turns the issue list into coaching cues
+# --- Phase 5: LLM coaching phrasing ---
+requests>=2.31          # OpenRouter coach (OpenAI-compatible HTTP) — provider-agnostic, optional key

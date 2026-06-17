@@ -41,8 +41,6 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
 
     analysis = metricsmod.analyze(pose, lift)
     analysis["pose_landmarks"] = pose.landmarks  # exposed for the confidence/off-axis check (Phase 2)
-    faults = faultsmod.detect_faults(analysis, lift)
-    cues = coachmod.coach_from_issues(faults["issue_list"], analysis["rep_count"])
 
     # bar tracking + velocity (VBT) — track the plate centre by colour, segment reps from the bar
     bar_xy, radii = barmod.track_plate(video_path, pose, lift, plate_backend=plate_backend, seed=seed)
@@ -58,6 +56,10 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["lifter_name"] = lifter_name   # on-video HUD + leaderboard attribution
     analysis["sex"] = sex
     analysis["bodyweight"] = bodyweight
+    # Faults + coaching cues — computed here, AFTER bar tracking, so velocity-loss can use the real
+    # bar speed when calibrated. The coach (LLM or rule fallback) only PHRASES these detected faults.
+    faults = faultsmod.detect_faults(analysis, lift)
+    cues = coachmod.generate_cues(analysis, faults, lift)
     # Confidence (off-axis gate) + the /100 lift score, computed once here so the on-video overlay,
     # the dashboard and the leaderboard all share the SAME numbers.
     analysis["confidence"] = confmod.assess(pose)

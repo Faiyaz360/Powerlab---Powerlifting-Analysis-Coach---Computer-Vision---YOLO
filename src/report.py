@@ -55,7 +55,7 @@ def _write_metrics_json(out_dir, name, analysis, faults) -> Path:
         "bar_velocity": analysis.get("bar_velocity"),
         "scale_m_per_px": analysis.get("scale_m_per_px"),
         "issues": faults["issue_list"],
-        "tempo_cv": faults["tempo_cv"],
+        "concentric_slowdown_pct": faults["concentric_slowdown_pct"],
     }
     path = out_dir / f"{name}_metrics.json"
     path.write_text(json.dumps(metrics, indent=2), encoding="utf-8")

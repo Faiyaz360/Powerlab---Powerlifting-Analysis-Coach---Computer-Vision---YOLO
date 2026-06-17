@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import numpy as np
 
+from . import advanced_metrics as am
+
 # squat
 FORWARD_LEAN_MAX = 55.0   # degrees from vertical at any point in the rep (coaching)
 # deadlift
 HIP_RISE_RATIO_MAX = 1.4  # hips rising >1.4x faster than shoulders early in the pull (coaching)
-# shared
-TEMPO_CV_MAX = 0.25       # coefficient of variation of rep durations across the set (coaching)
+# NOTE: concentric velocity loss across a set is NOT a fault — it's normal fatigue (an
+# autoregulation dial, goal-dependent). We REPORT it (concentric_slowdown_pct) but never flag it.
 
 # key -> {category, lift, rule}. category: "legal" (red-light in competition) or "coaching".
 ISSUE_META = {
@@ -40,10 +42,6 @@ ISSUE_META = {
         "category": "coaching", "lift": "deadlift",
         "rule": "Coaching (Starting Strength / JTS) — hips and shoulders should rise together",
     },
-    "inconsistent_tempo": {
-        "category": "coaching", "lift": "both",
-        "rule": "Coaching — consistent rep tempo reflects control",
-    },
 }
 
 
@@ -55,17 +53,14 @@ def detect_faults(analysis: dict, lift: str) -> dict:
     else:
         raise NotImplementedError(f"No fault rules for lift '{lift}' yet.")
 
-    tempo_cv = _tempo_cv(analysis["rep_metrics"])
-    if tempo_cv is not None and tempo_cv > TEMPO_CV_MAX:
-        issues.append("inconsistent_tempo")
-
     issue_list = sorted(set(issues))
     return {
         "issue_list": issue_list,
         "legal_issues": [i for i in issue_list if ISSUE_META.get(i, {}).get("category") == "legal"],
         "coaching_issues": [i for i in issue_list if ISSUE_META.get(i, {}).get("category") == "coaching"],
         "per_rep": per_rep,
-        "tempo_cv": None if tempo_cv is None else round(tempo_cv, 3),
+        # neutral autoregulation metric (reported, never a fault — see note at top of file)
+        "concentric_slowdown_pct": _concentric_slowdown_pct(analysis),
         "rep_count": analysis["rep_count"],
     }
 
@@ -99,9 +94,18 @@ def _deadlift_faults(analysis):
     return issues, per_rep
 
 
-def _tempo_cv(rep_metrics):
-    durations = [r["descent_s"] + r["ascent_s"] for r in rep_metrics]
-    if len(durations) < 2:
+def _concentric_slowdown_pct(analysis):
+    """Directional concentric slowdown first->last rep, as a percent — a NEUTRAL autoregulation
+    metric (set fatigue is normal, never a fault). Prefers calibrated bar velocity (mean concentric
+    m/s); falls back to pose ascent duration (same ROM, so a longer ascent = a slower rep).
+    Positive = slowed across the set; <=0 = held or sped up; None when there are <2 usable reps.
+    """
+    bar_loss = am.velocity_loss_pct(analysis.get("bar_velocity") or [])
+    if bar_loss is not None:
+        return bar_loss
+    ascents = [r["ascent_s"] for r in analysis["rep_metrics"]
+               if r.get("ascent_s") is not None and r["ascent_s"] > 0]
+    if len(ascents) < 2:
         return None
-    mean = float(np.mean(durations))
-    return float(np.std(durations) / mean) if mean > 0 else 0.0
+    first, last = ascents[0], ascents[-1]
+    return round((last - first) / last * 100, 1)  # velocity-loss proxy: 1 - v_last/v_first
