@@ -39,3 +39,24 @@ def test_load_board_end_to_end(tmp_path, monkeypatch):
                           "validated": 1, "sex": "female", "bodyweight_kg": 60.0, "dots": 110.0})
     html = app.load_board("Score", "")
     assert "Ann" in html and "91" in html
+
+
+def test_db_snapshot_restore_survives_a_restart(tmp_path, monkeypatch):
+    """Leaderboard DB snapshots to the mounted bucket and restores onto a fresh (post-restart) disk."""
+    bucket = tmp_path / "bucket"
+    bucket.mkdir()
+    monkeypatch.setattr(app, "PERSIST_DIR", str(bucket))
+    # boot 1: save a validated lift, snapshot to the bucket
+    monkeypatch.setattr(app, "DB_PATH", str(tmp_path / "boot1" / "history.db"))
+    history.save_run(app.DB_PATH, {"created_at": "2026-06-17T01:00:00", "lifter_name": "Ann",
+                                   "lift": "squat", "rep_count": 3, "bar_load_kg": 130.0, "score": 91.0,
+                                   "grade": "A+", "validated": 1, "sex": "male", "bodyweight_kg": 80.0})
+    app._snapshot_db()
+    assert (bucket / "history.db").exists()          # persisted to the bucket
+    # boot 2: a brand-new empty local disk (Space restarted) -> restore from the bucket
+    db2 = tmp_path / "boot2" / "history.db"
+    monkeypatch.setattr(app, "DB_PATH", str(db2))
+    app._restore_db()
+    assert db2.exists()
+    lb = history.leaderboard(str(db2), by="score")
+    assert lb and lb[0]["lifter_name"] == "Ann"       # data survived the restart

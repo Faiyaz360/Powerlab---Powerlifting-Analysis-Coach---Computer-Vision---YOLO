@@ -5,6 +5,7 @@ Run:  .\.venv\Scripts\python.exe app.py   then open http://127.0.0.1:7860
 from __future__ import annotations
 
 import os
+import shutil
 from datetime import datetime
 from html import escape
 from pathlib import Path
@@ -30,6 +31,33 @@ except ImportError:  # local / non-ZeroGPU: make the decorator a harmless no-op
 
 OUT_DIR = "output"
 DB_PATH = "data/history.db"
+
+# Persistence: HF Spaces' disk is ephemeral, so the leaderboard DB is snapshotted to a mounted HF
+# Storage Bucket (whole-file copy — bucket-friendly, no live-SQLite-on-object-store risk). Auto-on
+# when a bucket is mounted at /data (or PERSIST_DIR is set); a no-op locally where /data doesn't exist.
+PERSIST_DIR = os.environ.get("PERSIST_DIR") or (
+    "/data" if os.path.isdir("/data") and os.access("/data", os.W_OK) else None)
+
+
+def _restore_db() -> None:
+    """On boot, copy the persisted leaderboard DB from the bucket into the working path (if present)."""
+    if not PERSIST_DIR:
+        return
+    saved = os.path.join(PERSIST_DIR, "history.db")
+    if os.path.exists(saved):
+        Path(DB_PATH).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(saved, DB_PATH)
+
+
+def _snapshot_db() -> None:
+    """Copy the working DB out to the mounted bucket after a save (best-effort; never blocks)."""
+    if not PERSIST_DIR or not os.path.exists(DB_PATH):
+        return
+    try:
+        os.makedirs(PERSIST_DIR, exist_ok=True)
+        shutil.copy2(DB_PATH, os.path.join(PERSIST_DIR, "history.db"))
+    except Exception:
+        pass
 
 # Pose backend: YOLO (GPU) locally; MediaPipe (CPU) on Hugging Face Spaces (SPACE_ID is set there).
 # Override either way with the POSE_BACKEND env var.
@@ -511,6 +539,7 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     history.save_run(DB_PATH, _summary_record(a, result, adv, name, c, s, bodyweight, sex, bar_load,
                                               lifter_name=name_clean or None, sc=sc,
                                               validated=int(on_board)))
+    _snapshot_db()   # persist the leaderboard to the mounted bucket (no-op if none)
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
     return (
         result["paths"]["annotated_video"],
@@ -653,5 +682,6 @@ with gr.Blocks(title="Form Lab") as demo:
     board_lift.change(load_board, [board_by, board_lift], board_out)
 
 if __name__ == "__main__":
-    history.init_db(DB_PATH)
+    _restore_db()              # pull the persisted leaderboard from the bucket (if mounted) first
+    history.init_db(DB_PATH)   # then create / migrate the working DB
     demo.launch(theme=THEME, css=CSS)
