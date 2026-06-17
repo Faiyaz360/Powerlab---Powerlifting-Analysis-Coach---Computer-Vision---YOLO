@@ -1,4 +1,6 @@
 """Bar-path speed colormap (red = slow -> blue = avg -> green = fast), in BGR for OpenCV."""
+import numpy as np
+
 from src import render
 
 
@@ -17,3 +19,27 @@ def test_speed_color_fast_is_green():
 def test_speed_color_clamps_out_of_range():
     assert render._speed_color(-1.0) == (0, 0, 255)
     assert render._speed_color(2.0) == (0, 255, 0)
+
+
+def test_velocity_graph_draws_rep_fill_and_start_line():
+    """The bottom velocity graph renders a green concentric-rep fill and a red dotted 'rep start'
+    vertical without error, and actually marks the frame (green fill + red pixels appear)."""
+    h, w, n = 400, 600, 60
+    frame = np.zeros((h, w, 3), np.uint8)
+    gx0, gx1 = int(w * 0.05), int(w * 0.95)
+    gy1 = int(h * 0.97)
+    gy0 = gy1 - int(h * 0.14)
+    gmid = (gy0 + gy1) // 2
+    vs = np.zeros(n)
+    vs[20:40] = 1.0                                          # one positive hump = a concentric rep
+    vmax = 1.0
+    xs = gx0 + (gx1 - gx0) * np.arange(n) // max(1, n - 1)
+    ys = np.clip((gmid - (vs / vmax) * ((gy1 - gy0) / 2) * 0.9).astype(int), gy0, gy1)
+    pts = np.stack([xs, ys], axis=1).astype(np.int32)
+    box = (gx0, gy0, gx1, gy1, gmid, vmax)
+
+    render._draw_velocity_graph(frame, pts, box, n - 1, reps_idx=[(20, 39)])
+
+    b, g, r = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
+    assert ((r > 150) & (g < 80) & (b < 80)).any()           # red 'rep start' vertical present
+    assert ((g > 50) & (g > b + 20) & (g > r + 20)).any()    # green concentric fill present

@@ -127,7 +127,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
 
     # On-video real-time velocity graph: full-width strip along the bottom.
     vel_series = analysis.get("bar_velocity_series")
-    graph_pts, graph_box = None, None
+    graph_pts, graph_box, graph_reps = None, None, None
     badge_y = int(pose.height * 0.80)             # the depth flash sits just above the graph
     if vel_series is not None and len(vel_series) >= 2:
         vs = np.nan_to_num(np.asarray(vel_series, dtype=float))
@@ -142,6 +142,10 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         graph_pts = np.stack([xs, ys], axis=1).astype(np.int32)
         graph_box = (gx0, gy0, gx1, gy1, gmid, vmax)
         badge_y = gy0
+        # Each rep's concentric span (bottom -> lockout) as series indices: the green fill area and
+        # the red 'rep start' marker on the graph. Frame index == series index == graph-point index.
+        graph_reps = [(int(r["bottom"]), min(int(r["top"]), n - 1)) for r in bar_reps
+                      if 0 <= int(r["bottom"]) < n] if bar_reps else None
 
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
@@ -175,7 +179,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
             _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
             _draw_badge(frame, f, rep_metrics, badge_window, badge_y)
-            _draw_velocity_graph(frame, graph_pts, graph_box, f)
+            _draw_velocity_graph(frame, graph_pts, graph_box, f, graph_reps)
             _draw_path_panel(frame, path_panel_pts, path_runs, path_panel_box, f)
             if table_img is not None and table_xy is not None:
                 th, tw = table_img.shape[:2]
@@ -371,10 +375,12 @@ def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
         y += rh
 
 
-def _draw_velocity_graph(frame, pts, box, f):
+def _draw_velocity_graph(frame, pts, box, f, reps_idx=None):
     """Burn a compact velocity-vs-time graph onto the bottom of the frame. The curve up to the
-    current frame is bright with a 'now' cursor, the rest faint — so it animates as the video plays
-    (the on-video real-time graph). Points are precomputed; drawing is O(n) via polylines."""
+    current frame is bright with a 'now' cursor, the rest faint. Each detected rep's concentric (the
+    bar driving up) is filled green and its start marked with a red dotted vertical — both revealed
+    as the bar reaches them, so the rep structure animates with the lift. ``reps_idx`` is a list of
+    (start, end) series indices per rep. Points are precomputed; drawing is O(n) via polylines."""
     if pts is None or box is None:
         return
     gx0, gy0, gx1, gy1, gmid, vmax = box
@@ -382,16 +388,46 @@ def _draw_velocity_graph(frame, pts, box, f):
     cv2.rectangle(overlay, (gx0 - 8, gy0 - 8), (gx1 + 8, gy1 + 8), (18, 18, 22), -1)
     cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
     cv2.line(frame, (gx0, gmid), (gx1, gmid), (90, 90, 96), 1, cv2.LINE_AA)   # zero baseline
+    # green fill of each rep's concentric (above-baseline) area, revealed up to the current frame
+    if reps_idx:
+        fill = frame.copy()
+        drew = False
+        for b, t in reps_idx:
+            if b > f:
+                break
+            e = min(t, f, len(pts) - 1)
+            if e <= b:
+                continue
+            seg = pts[b:e + 1]
+            edge = [(int(x), min(int(y), gmid)) for x, y in seg]   # clamp to the up (positive) band
+            poly = np.array(edge + [(int(seg[-1][0]), gmid), (int(seg[0][0]), gmid)], np.int32)
+            cv2.fillPoly(fill, [poly], _CONCENTRIC)
+            drew = True
+        if drew:
+            cv2.addWeighted(fill, 0.30, frame, 0.70, 0, frame)
     cv2.polylines(frame, [pts], False, (115, 115, 120), 1, cv2.LINE_AA)       # full curve, faint
     k = min(f + 1, len(pts))
     if k >= 2:
         cv2.polylines(frame, [pts[:k]], False, START_LINE, 2, cv2.LINE_AA)    # past curve, bright
+    # red dotted 'rep start' verticals — one per rep, appearing as the bar reaches each
+    if reps_idx:
+        for b, _t in reps_idx:
+            if b > f:
+                break
+            rx = int(pts[min(b, len(pts) - 1)][0])
+            for yy in range(gy0, gy1, 10):
+                cv2.line(frame, (rx, yy), (rx, min(yy + 5, gy1)), RED, 1, cv2.LINE_AA)
     cx = int(pts[min(f, len(pts) - 1)][0])
     cv2.line(frame, (cx, gy0), (cx, gy1), WHITE, 1, cv2.LINE_AA)              # 'now' cursor
     # label + slow/avg/fast colour key (drawn last so they stay readable over the curve)
     s = max(0.5, (gx1 - gx0) / 1100.0)
     cv2.putText(frame, f"BAR SPEED (peak {vmax:.2f} m/s)", (gx0 + 4, gy0 + int(18 * s)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5 * s, (215, 215, 219), 1, cv2.LINE_AA)
+    ry = gy0 + int(34 * s)                                   # red 'rep start' key under the title
+    for x in range(gx0 + 4, gx0 + 4 + int(18 * s), 5):
+        cv2.line(frame, (x, ry), (min(x + 3, gx0 + 4 + int(18 * s)), ry), RED, 1, cv2.LINE_AA)
+    cv2.putText(frame, "rep start", (gx0 + 4 + int(24 * s), ry + int(4 * s)),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.42 * s, (215, 215, 219), 1, cv2.LINE_AA)
     lx = gx1 - int(168 * s)
     for label, frac in (("slow", 0.0), ("avg", 0.5), ("fast", 1.0)):
         cv2.circle(frame, (lx, gy0 + int(13 * s)), max(2, int(5 * s)), _speed_color(frac), -1)
