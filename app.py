@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
+from html import escape
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -14,7 +15,8 @@ import gradio as gr
 import numpy as np
 
 from src import advanced_metrics as am
-from src import barbell, charts, confidence as conf, history, marking, media, pipeline, plate_dataset
+from src import barbell, charts, confidence as conf, history, marking, media, pipeline
+from src import plate_dataset, score
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -74,12 +76,40 @@ footer {display: none !important;}
 #fl-video video {width: 100%; height: auto;}   /* fill width, keep aspect (portrait fills the phone) */
 #fl-seed, #fl-seed img {max-height: 70vh; object-fit: contain;}  /* tall marking frame stays on-screen */
 .fl-narrow .table-wrap {border-radius: 12px;}
+/* score banner */
+.fl-score {display: flex; align-items: center; gap: 16px; background: var(--block-background-fill);
+           border: 1px solid var(--border-color-primary); border-radius: 16px; padding: 16px; margin: 4px 0;}
+.fl-score-num {font-size: 44px; font-weight: 700; line-height: 1; color: var(--body-text-color);}
+.fl-score-num .fl-unit {font-size: 16px;}
+.fl-grade {font-size: 22px; font-weight: 700; padding: 4px 12px; border-radius: 12px;
+           background: rgba(37,138,221,.15); color: #2b82dd;}
+.fl-score-meta {flex: 1;}
+.fl-score-status {font-size: 13px; color: var(--body-text-color-subdued); margin-top: 3px;}
+.fl-bars {display: grid; grid-template-columns: repeat(auto-fit, minmax(86px, 1fr)); gap: 6px; margin-top: 10px;}
+.fl-bar {font-size: 11px; color: var(--body-text-color-subdued);}
+.fl-bar i {display: block; height: 6px; border-radius: 3px; background: rgba(37,138,221,.18); margin-top: 3px;}
+.fl-bar i b {display: block; height: 100%; background: #2b82dd; border-radius: 3px;}
+/* leaderboard */
+.lb {display: flex; flex-direction: column; gap: 8px;}
+.lb-row {display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px;
+         background: var(--block-background-fill); border: 1px solid var(--border-color-primary);}
+.lb-medal {font-size: 20px; width: 36px; text-align: center; font-weight: 700;
+           color: var(--body-text-color-subdued);}
+.lb-name {flex: 1; font-weight: 600; font-size: 16px; color: var(--body-text-color);}
+.lb-sub {display: block; font-weight: 400; font-size: 12px; color: var(--body-text-color-subdued);}
+.lb-grade {font-size: 13px; font-weight: 700; color: #2b82dd; min-width: 26px; text-align: center;}
+.lb-primary {font-size: 22px; font-weight: 700; color: var(--body-text-color);}
+.lb-primary .fl-unit {font-size: 13px;}
+.lb-rank1 {border-color: rgba(245,197,24,.55); background: linear-gradient(0deg, rgba(245,197,24,.10), transparent);}
+.lb-rank2 {border-color: rgba(184,192,200,.55);}
+.lb-rank3 {border-color: rgba(205,127,50,.50);}
 /* Mobile: edge-to-edge, full-width blocks, smaller stat numbers, scrollable table */
 @media (max-width: 600px) {
   .gradio-container {max-width: 100% !important; padding: 0 8px !important;}
   .fl-narrow, .fl-video-wrap {max-width: 100% !important;}
   .fl-value {font-size: 22px;}
   .fl-narrow .table-wrap {overflow-x: auto;}
+  .fl-score-num {font-size: 36px;}
 }
 """
 
@@ -224,7 +254,7 @@ def _cards_html(a: dict, adv: dict) -> str:
 
 def _strength_html(s) -> str:
     if not s:
-        return ("<div class='fl-hint'>Enter bodyweight (Settings) and a bar load to unlock "
+        return ("<div class='fl-hint'>Enter bodyweight and a lift weight above to unlock "
                 "strength scores.</div>")
     e = s["e1rm"]
     e1_val = e["e1rm_kg"] if e else None
@@ -240,15 +270,79 @@ def _strength_html(s) -> str:
     return f"<div class='fl-grid'>{''.join(cards)}</div>{hint}"
 
 
+_SCORE_BARS = [("Legal", "legality"), ("Technique", "technique"), ("Bar path", "bar_path"),
+               ("Control", "control"), ("Consistency", "consistency")]
+
+
+def _score_html(sc) -> str:
+    """Gamified execution-score banner: big /100, letter grade, leaderboard status, component bars."""
+    if not sc:
+        return ""
+    status = ("\U0001F3C5 Validated — on the leaderboard" if sc["validated"]
+              else "Not on the leaderboard — " + sc["reason"].split("—", 1)[-1].strip())
+    bars = "".join(
+        f"<span class='fl-bar'>{lbl}<i><b style='width:{int(sc['breakdown'][k])}%'></b></i></span>"
+        for lbl, k in _SCORE_BARS if sc["breakdown"].get(k) is not None
+    )
+    return (f"<div class='fl-score'>"
+            f"<span class='fl-score-num'>{sc['score']}<span class='fl-unit'>/100</span></span>"
+            f"<span class='fl-grade'>{escape(str(sc['grade']))}</span>"
+            f"<div class='fl-score-meta'><b>Lift score</b>"
+            f"<div class='fl-score-status'>{escape(status)}</div>"
+            f"<div class='fl-bars'>{bars}</div></div></div>")
+
+
+_MEDALS = {1: "\U0001F947", 2: "\U0001F948", 3: "\U0001F949"}   # gold / silver / bronze
+
+
+def _leaderboard_html(rows: list, by: str) -> str:
+    """Ranked board. ``by`` = 'Score' or 'Weight'. Names are user input -> HTML-escaped."""
+    if not rows:
+        return ("<div class='fl-hint'>No validated lifts yet. Analyse a <b>side-on</b> lift with your "
+                "<b>name</b> and <b>lift weight</b> filled in, and pass depth/lockout, to claim a spot.</div>")
+    items = []
+    for r in rows:
+        rank = r["rank"]
+        medal = _MEDALS.get(rank, f"#{rank}")
+        weight = r.get("bar_load_kg")
+        sc_val = r.get("score")
+        if by == "Score":
+            primary = f"{sc_val:.0f}<span class='fl-unit'>/100</span>" if sc_val is not None else "—"
+            sub = f"{weight:.0f} kg · {escape(str(r.get('lift', '')))}" if weight else escape(str(r.get("lift", "")))
+        else:
+            primary = f"{weight:.0f}<span class='fl-unit'> kg</span>" if weight else "—"
+            sub = f"score {sc_val:.0f} · {escape(str(r.get('lift', '')))}" if sc_val is not None else escape(str(r.get("lift", "")))
+        dots = f" · DOTS {r['dots']:.0f}" if r.get("dots") else ""
+        grade = escape(str(r.get("grade") or ""))
+        items.append(
+            f"<div class='lb-row lb-rank{min(rank, 4)}'>"
+            f"<span class='lb-medal'>{medal}</span>"
+            f"<span class='lb-name'>{escape(str(r.get('lifter_name', '')))}"
+            f"<span class='lb-sub'>{sub}{dots}</span></span>"
+            f"<span class='lb-grade'>{grade}</span>"
+            f"<span class='lb-primary'>{primary}</span></div>"
+        )
+    return f"<div class='lb'>{''.join(items)}</div>"
+
+
+def load_board(by: str, lift: str):
+    """Render the leaderboard ranked by score or by weight, optionally filtered to one lift."""
+    rows = history.leaderboard(DB_PATH, by="score" if by == "Score" else "weight",
+                               lift=lift or None, limit=100)
+    return _leaderboard_html(rows, by)
+
+
 def _summary_record(a, result, adv, name, c=None, s=None,
-                    bodyweight=None, sex=None, bar_load=None) -> dict:
+                    bodyweight=None, sex=None, bar_load=None,
+                    lifter_name=None, sc=None, validated=0) -> dict:
     mcv, peak = _first_velocity(a)
     depth_pass = (any(r.get("depth_pass") for r in (a.get("rep_metrics") or []))
                   if a["lift"] == "squat" else None)
     e1rm = s["e1rm"]["e1rm_kg"] if s and s.get("e1rm") else None
     return {
         "created_at": datetime.now().isoformat(timespec="seconds"),
-        "video_name": name, "lift": a["lift"], "rep_count": a["rep_count"],
+        "video_name": name, "lifter_name": lifter_name, "lift": a["lift"],
+        "rep_count": a["rep_count"],
         "depth_pass": int(depth_pass) if depth_pass is not None else None,
         "confidence": c["level"] if c else None,
         "mean_velocity": mcv, "peak_velocity": peak,
@@ -258,6 +352,8 @@ def _summary_record(a, result, adv, name, c=None, s=None,
         "dots": s["dots"] if s else None, "e1rm_kg": e1rm,
         "peak_power_w": s["power"] if s else None,
         "est_rpe": s["rpe"] if s else None,
+        "score": sc["score"] if sc else None, "grade": sc["grade"] if sc else None,
+        "validated": int(validated),
         "annotated_path": result["paths"]["annotated_video"],
         "metrics_json_path": result["paths"]["metrics"],
     }
@@ -373,7 +469,7 @@ def on_autodetect(frame0):
 
 
 @spaces.GPU(duration=120)
-def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, skel,
+def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, skel,
             progress=gr.Progress()):
     if not video_path:
         raise gr.Error("Upload a lift video first.")
@@ -407,12 +503,19 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
     adv = _advanced(a)
     c = _confidence(a)
     s = _strength(a, bodyweight, sex, bar_load)
-    history.save_run(DB_PATH, _summary_record(a, result, adv, name, c, s,
-                                              bodyweight, sex, bar_load))
+    sc = score.score_lift(a, result["faults"], c)
+    # A lift reaches the leaderboard only when it's validated (side-on + legal) AND attributable
+    # (a name) with a weight to rank by.
+    name_clean = (lifter_name or "").strip()
+    on_board = bool(sc and sc["validated"] and name_clean and bar_load)
+    history.save_run(DB_PATH, _summary_record(a, result, adv, name, c, s, bodyweight, sex, bar_load,
+                                              lifter_name=name_clean or None, sc=sc,
+                                              validated=int(on_board)))
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
     return (
         result["paths"]["annotated_video"],
         _verdict_html(a, c),
+        _score_html(sc),
         _cards_html(a, adv),
         _strength_html(s),
         charts.angle_curve(a),
@@ -450,6 +553,18 @@ with gr.Blocks(title="Form Lab") as demo:
     with gr.Tab("Analyse"):
         # --- inputs: one clean centred column (mobile-first; scales to desktop) ---
         with gr.Column(elem_classes="fl-narrow"):
+            # lifter details first — drive the leaderboard + strength scores
+            gr.HTML("<div class='fl-sec'>LIFTER</div>")
+            with gr.Row():
+                name_in = gr.Textbox(label="Name", placeholder="Your name (for the leaderboard)",
+                                     max_lines=1)
+                sex_in = gr.Radio(["male", "female"], value="male", label="Gender")
+            with gr.Row():
+                bw_in = gr.Number(label="Bodyweight (kg)", value=80)
+                load_in = gr.Number(label="Lift weight (kg)", value=None)
+            lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
+
+            gr.HTML("<div class='fl-sec'>VIDEO (SIDE-ON)</div>")
             video_in = gr.Video(label="Upload (side-on)", height=260)
             with gr.Accordion("Trim clip (optional)", open=False):
                 with gr.Row():
@@ -465,15 +580,13 @@ with gr.Blocks(title="Form Lab") as demo:
                     seed_cx = gr.Slider(0, 1, value=0, step=1, label="Centre X")
                     seed_cy = gr.Slider(0, 1, value=0, step=1, label="Centre Y")
                 seed_radius = gr.Slider(10, 300, value=60, step=1, label="Plate radius")
-            with gr.Row():
-                lift_in = gr.Radio(["squat", "deadlift"], value="squat", label="Lift")
-                load_in = gr.Number(label="Bar load (kg)", value=None)
             skel_in = gr.Radio(["Side points", "All points", "None"], value="Side points",
                                label="Skeleton", info="Side = side-view joints · None = bar path only")
             run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
-        # --- results: verdict banner, centred video, then the stat-card grid (auto-reflows) ---
+        # --- results: verdict + score banner, centred video, then the stat-card grid (auto-reflows) ---
         verdict_out = gr.HTML(elem_classes="fl-narrow")
+        score_out = gr.HTML(elem_classes="fl-narrow")
         with gr.Column(elem_classes="fl-video-wrap"):
             video_out = gr.Video(label="Annotated", show_label=False, autoplay=True,
                                  elem_id="fl-video")
@@ -506,11 +619,15 @@ with gr.Blocks(title="Form Lab") as demo:
         hist_table = gr.Dataframe(headers=["date", "lift", "reps", "consistency", "vel loss"],
                                   label="Past runs")
         trend_out = gr.Plot(label="Trend")
-    with gr.Tab("Settings"):
-        bw_in = gr.Number(label="Bodyweight (kg)", value=80)
-        sex_in = gr.Radio(["male", "female"], value="male", label="Sex (for DOTS)")
-        gr.Markdown("_Bodyweight + sex feed DOTS / est-1RM / power / RPE. Set the bar load per "
-                    "lift on the Analyse tab._")
+    with gr.Tab("Leaderboard") as board_tab:
+        gr.Markdown("🏆 **Leaderboard** — each lifter's best validated lift. "
+                    "**Score** = how well you lifted (/100) · **Weight** = how much. "
+                    "Only side-on, legal lifts (with a name + weight) count.")
+        with gr.Row():
+            board_by = gr.Radio(["Score", "Weight"], value="Score", label="Rank by")
+            board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")
+        board_refresh = gr.Button("Refresh")
+        board_out = gr.HTML(elem_classes="fl-narrow")
 
     video_in.upload(on_upload, [video_in],
                     [video_in, seed_img, frame0_state, seed_instr, source_state,
@@ -524,12 +641,16 @@ with gr.Blocks(title="Form Lab") as demo:
     auto_btn.click(on_autodetect, [frame0_state],
                    [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
     run_btn.click(analyze,
-                  [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
+                  [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
-                  [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out,
-                   reps_table, mcv_out, path_out])
+                  [video_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
+                   report_out, reps_table, mcv_out, path_out])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
+    board_tab.select(load_board, [board_by, board_lift], board_out)
+    board_refresh.click(load_board, [board_by, board_lift], board_out)
+    board_by.change(load_board, [board_by, board_lift], board_out)
+    board_lift.change(load_board, [board_by, board_lift], board_out)
 
 if __name__ == "__main__":
     history.init_db(DB_PATH)
