@@ -29,8 +29,8 @@ def test_landscape_1080p_needs_downscale():
 
 
 def test_at_target_not_downscaled():
-    # 540x960: long side == 960 (TARGET_LONG_SIDE), not greater -> leave it.
-    assert media._needs_downscale(540, 960) is False
+    # 608x1080: long side == 1080 (TARGET_LONG_SIDE), not greater -> leave it.
+    assert media._needs_downscale(608, 1080) is False
 
 
 def test_unknown_size_left_alone():

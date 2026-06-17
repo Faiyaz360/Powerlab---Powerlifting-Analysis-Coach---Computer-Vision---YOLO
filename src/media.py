@@ -24,7 +24,8 @@ _BROWSER_SAFE_PIXFMTS = {"yuv420p", "yuvj420p"}
 # Cap the longer side of the working clip. Downscaling here makes the transcode, pose, bar tracking
 # and rendering all faster (fewer pixels) with no real accuracy cost — the pose model resizes
 # internally anyway, and the marked plate scales with the frame. 1280 keeps the plate well-resolved.
-TARGET_LONG_SIDE = 1280   # working size — bigger = crisper overlays (was 960; 1280 ~ phone width)
+TARGET_LONG_SIDE = 1080   # working size — speed/sharpness balance (accuracy is res-independent: the
+#                           pose model resizes to 640 internally, and 960 matched full-res exactly).
 
 
 def _needs_transcode(codec: str | None, pix_fmt: str | None) -> bool:
