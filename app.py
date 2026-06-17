@@ -131,18 +131,19 @@ def _first_velocity(a: dict):
 
 
 def _velocity_table(a: dict):
-    """Per-rep velocity rows for the stats table under the video: rep #, mean, peak, ROM, time.
-    Uses calibrated m/s + m when the plate was marked (it always is here); else raw px units."""
+    """Per-rep rows for the stats table under the video (LIFT-APP style):
+    Rep | Con(s) | Vel(m/s) | Peak(m/s) | Ecc(s) | ROM(m). Calibrated when the plate was marked
+    (always, here); else raw px units."""
     rows = []
     for i, v in enumerate(a.get("bar_velocity") or [], start=1):
         if not v:
             continue
         if v.get("calibrated"):
-            rows.append([i, v.get("mean_velocity_ms"), v.get("peak_velocity_ms"),
-                         v.get("rom_m"), v.get("concentric_s")])
+            rows.append([i, v.get("concentric_s"), v.get("mean_velocity_ms"),
+                         v.get("peak_velocity_ms"), v.get("eccentric_s"), v.get("rom_m")])
         else:
-            rows.append([i, v.get("mean_velocity_px_s"), v.get("peak_velocity_px_s"),
-                         v.get("rom_px"), v.get("concentric_s")])
+            rows.append([i, v.get("concentric_s"), v.get("mean_velocity_px_s"),
+                         v.get("peak_velocity_px_s"), v.get("eccentric_s"), v.get("rom_px")])
     return rows
 
 
@@ -384,6 +385,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
         charts.velocity_time(a),
         report_md,
         _velocity_table(a),
+        charts.velocity_bars(a.get("bar_velocity") or []),
     )
 
 
@@ -441,8 +443,9 @@ with gr.Blocks(title="Form Lab") as demo:
                                  elem_id="fl-video")
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
-        reps_table = gr.Dataframe(headers=["Rep", "Mean m/s", "Peak m/s", "ROM m", "Time s"],
+        reps_table = gr.Dataframe(headers=["Rep", "Con s", "Vel m/s", "Peak m/s", "Ecc s", "ROM m"],
                                   interactive=False, elem_classes="fl-narrow")
+        mcv_out = gr.Plot(label="Mean velocity per rep", show_label=False, elem_classes="fl-narrow")
         vel_out = gr.Plot(label="Bar velocity over time", show_label=False, elem_classes="fl-narrow")
         cards_out = gr.HTML()
         gr.HTML("<div class='fl-sec'>STRENGTH</div>")
@@ -484,7 +487,7 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
                   [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out,
-                   reps_table])
+                   reps_table, mcv_out])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
 

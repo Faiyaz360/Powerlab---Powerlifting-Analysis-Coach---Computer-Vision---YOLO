@@ -24,16 +24,23 @@ def angle_curve(analysis: dict):
 
 
 def velocity_bars(bar_velocity: list):
-    """Mean concentric velocity per rep (m/s). Empty-safe."""
+    """Per-rep mean concentric velocity (m/s) bars with the best rep marked and velocity loss
+    annotated — the coach-standard set summary. Empty-safe."""
     mcvs = [v["mean_velocity_ms"] for v in bar_velocity
             if v and v.get("mean_velocity_ms") is not None]
     fig, ax = plt.subplots(figsize=(4, 2.4))
-    if mcvs:
-        ax.bar([f"R{i+1}" for i in range(len(mcvs))], mcvs, color="#1D9E75")
-        ax.set_ylabel("mean vel (m/s)")
-    else:
+    if not mcvs:
         ax.text(0.5, 0.5, "no bar-speed data", ha="center", va="center")
         ax.axis("off")
+        fig.tight_layout()
+        return fig
+    best, last = max(mcvs), mcvs[-1]
+    vloss = (best - last) / best * 100 if best > 0 else 0.0
+    colors = ["#1D9E75" if m == best else "#378ADD" for m in mcvs]   # best rep green, rest blue
+    ax.bar([f"R{i + 1}" for i in range(len(mcvs))], mcvs, color=colors)
+    ax.axhline(best, color="#1D9E75", ls="--", lw=0.9, alpha=0.6)    # best-rep reference line
+    ax.set_ylabel("mean vel (m/s)")
+    ax.set_title(f"velocity loss {vloss:.0f}%  (best {best:.2f} → last {last:.2f} m/s)", fontsize=8)
     fig.tight_layout()
     return fig
 

@@ -110,7 +110,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         xs = gx0 + (gx1 - gx0) * np.arange(n) // max(1, n - 1)
         ys = np.clip((gmid - (vs / vmax) * ((gy1 - gy0) / 2) * 0.9).astype(int), gy0, gy1)
         graph_pts = np.stack([xs, ys], axis=1).astype(np.int32)
-        graph_box = (gx0, gy0, gx1, gy1, gmid)
+        graph_box = (gx0, gy0, gx1, gy1, gmid, vmax)
 
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
@@ -309,7 +309,7 @@ def _draw_velocity_graph(frame, pts, box, f):
     (the on-video real-time graph). Points are precomputed; drawing is O(n) via polylines."""
     if pts is None or box is None:
         return
-    gx0, gy0, gx1, gy1, gmid = box
+    gx0, gy0, gx1, gy1, gmid, vmax = box
     overlay = frame.copy()
     cv2.rectangle(overlay, (gx0 - 8, gy0 - 8), (gx1 + 8, gy1 + 8), (18, 18, 22), -1)
     cv2.addWeighted(overlay, 0.5, frame, 0.5, 0, frame)
@@ -322,7 +322,7 @@ def _draw_velocity_graph(frame, pts, box, f):
     cv2.line(frame, (cx, gy0), (cx, gy1), WHITE, 1, cv2.LINE_AA)              # 'now' cursor
     # label + slow/avg/fast colour key (drawn last so they stay readable over the curve)
     s = max(0.5, (gx1 - gx0) / 1100.0)
-    cv2.putText(frame, "BAR SPEED (m/s)", (gx0 + 4, gy0 + int(18 * s)),
+    cv2.putText(frame, f"BAR SPEED (peak {vmax:.2f} m/s)", (gx0 + 4, gy0 + int(18 * s)),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.5 * s, (215, 215, 219), 1, cv2.LINE_AA)
     lx = gx1 - int(168 * s)
     for label, frac in (("slow", 0.0), ("avg", 0.5), ("fast", 1.0)):

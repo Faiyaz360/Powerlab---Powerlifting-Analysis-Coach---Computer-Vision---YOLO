@@ -295,7 +295,7 @@ def velocity_per_rep(bar_xy, reps, fps, scale):
     y = _lowpass(_median3(_interp(bar_xy[:, 1].astype(float))), fps)
     vel_px = -np.gradient(y) * fps                 # px/s, upward positive
     out = []
-    for r in reps:
+    for i, r in enumerate(reps):
         valley, top = r["bottom"], r["top"]        # floor and lockout, from the BAR signal
         if top <= valley:
             out.append(None)
@@ -319,7 +319,8 @@ def velocity_per_rep(bar_xy, reps, fps, scale):
         if scale and peak_px * scale < MIN_PEAK_MS:
             continue  # not a real concentric pull — drop this spurious bar rep
         mcv_px = disp_px / dt if dt > 0 else 0.0
-        out.append(_pack(disp_px, mcv_px, peak_px, dt, scale))
+        ecc_s = (valley - reps[i - 1]["top"]) / fps if i > 0 else None   # lowering: prev lockout -> this bottom
+        out.append(_pack(disp_px, mcv_px, peak_px, dt, scale, ecc_s))
     return out
 
 
@@ -333,7 +334,7 @@ def velocity_series(bar_xy, fps, scale):
     return vel * scale if scale else vel
 
 
-def _pack(disp_px, mcv_px, peak_px, dt, scale):
+def _pack(disp_px, mcv_px, peak_px, dt, scale, ecc_s=None):
     calibrated = scale is not None
     return {
         "calibrated": calibrated,
@@ -344,6 +345,7 @@ def _pack(disp_px, mcv_px, peak_px, dt, scale):
         "peak_velocity_px_s": round(peak_px, 1),
         "rom_px": round(abs(disp_px), 1),
         "concentric_s": round(dt, 2),
+        "eccentric_s": round(ecc_s, 2) if ecc_s is not None else None,
     }
 
 
