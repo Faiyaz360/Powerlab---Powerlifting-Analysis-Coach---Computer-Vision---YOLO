@@ -898,7 +898,7 @@ with gr.Blocks(title="PowerLab") as demo:
     gr.HTML(GLOBAL_STYLE, elem_id="fl-gstyle")   # unscoped global CSS — reaches the page root on Spaces
     if os.path.exists(BANNER_PNG):
         gr.Image(BANNER_PNG, show_label=False, container=False, interactive=False,
-                 show_download_button=False, elem_id="fl-banner")
+                 elem_id="fl-banner")
     else:
         gr.HTML(f"<div id='fl-banner'>{BANNER_SVG}</div>")
     with gr.Tab("Analyse"):
@@ -935,6 +935,21 @@ with gr.Blocks(title="PowerLab") as demo:
                     trim_start = gr.Slider(0, 1, value=0, step=0.1, label="Start (s)")
                     trim_end = gr.Slider(0, 1, value=1, step=0.1, label="End (s)")
                 trim_btn = gr.Button("Apply trim", size="sm")
+            with gr.Accordion("⭕ How to mark the plate — read first (sets the bar-speed scale)", open=False):
+                gr.HTML(
+                    "<div class='fl-guide'>"
+                    "<b>Why?</b> The app knows a bumper plate is <b>450 mm</b> across, so marking it turns "
+                    "pixels into real metres — that's what makes <b>bar speed (m/s)</b> and range-of-motion "
+                    "accurate.<br>"
+                    "<b>Easiest:</b> tap <b>Auto-detect plate (quick)</b>, then check the circle landed on a "
+                    "plate.<br>"
+                    "<b>By hand:</b> <b>tap the centre</b> of the clearest plate (the one facing the camera — "
+                    "a full circle), then <b>tap its edge</b> to size the ring. Tap the centre again to redo.<br>"
+                    "<b>Fine-tune:</b> open <b>Adjust by hand</b> below to nudge X / Y / radius until the ring "
+                    "hugs the rim.<br>"
+                    "<span class='fl-guide-note'>One plate is enough. A snug, accurate circle = trustworthy "
+                    "bar speed.</span>"
+                    "</div>")
             seed_img = gr.Image(label="Mark the plate — align the circle", type="numpy",
                                 interactive=False, elem_id="fl-seed")
             seed_instr = gr.Markdown(SEED_INSTR)
