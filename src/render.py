@@ -91,6 +91,15 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
     path_panel = charts.bar_path_img(analysis, max(150, int(pose.width * 0.34)))  # top-right overlay
 
+    # Bottom overlays: the per-rep table (lowest strip) with the velocity graph just above it.
+    table_img = charts.velocity_table_img(bar_velocity, int(pose.width * 0.92))
+    table_xy = None
+    bottom = int(pose.height * 0.975)
+    if table_img is not None:
+        th, tw = table_img.shape[:2]
+        table_xy = ((pose.width - tw) // 2, pose.height - th - 8)
+        bottom = table_xy[1] - 8                  # the graph must end above the table
+
     # On-video real-time velocity graph: precompute the curve's pixel points once (frame dims fixed).
     vel_series = analysis.get("bar_velocity_series")
     graph_pts, graph_box = None, None
@@ -99,7 +108,8 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         vmax = float(np.max(np.abs(vs))) or 1.0
         n = len(vs)
         gx0, gx1 = int(pose.width * 0.05), int(pose.width * 0.95)
-        gy0, gy1 = int(pose.height * 0.81), int(pose.height * 0.97)
+        gy1 = bottom
+        gy0 = gy1 - int(pose.height * 0.13)
         gmid = (gy0 + gy1) // 2
         xs = gx0 + (gx1 - gx0) * np.arange(n) // max(1, n - 1)
         ys = np.clip((gmid - (vs / vmax) * ((gy1 - gy0) / 2) * 0.9).astype(int), gy0, gy1)
@@ -144,6 +154,11 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
                 px, py = pose.width - pw - 12, 12
                 if 0 <= px and py + ph <= frame.shape[0] and px + pw <= frame.shape[1]:
                     frame[py:py + ph, px:px + pw] = path_panel
+            if table_img is not None and table_xy is not None:
+                th, tw = table_img.shape[:2]
+                tx, ty = table_xy
+                if 0 <= tx and ty + th <= frame.shape[0] and tx + tw <= frame.shape[1]:
+                    frame[ty:ty + th, tx:tx + tw] = table_img
         writer.write(frame)
         f += 1
 

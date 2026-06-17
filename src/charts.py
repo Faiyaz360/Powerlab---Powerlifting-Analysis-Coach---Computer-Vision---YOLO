@@ -51,6 +51,37 @@ def bar_path_img(analysis: dict, width_px: int = 200):
     return cv2.resize(img, (width_px, int(h0 * width_px / w0)))
 
 
+def _cell(x):
+    if x is None:
+        return "-"
+    return f"{x:.2f}" if isinstance(x, float) else str(x)
+
+
+def velocity_table_img(bar_velocity, width_px: int = 480):
+    """Compact per-rep table (Rep | Con | Vel | Peak | Ecc) as a dark BGR image for the on-video
+    overlay (bottom strip). None if no data."""
+    rows = [[str(i), _cell(v.get("concentric_s")), _cell(v.get("mean_velocity_ms")),
+             _cell(v.get("peak_velocity_ms")), _cell(v.get("eccentric_s"))]
+            for i, v in enumerate(bar_velocity or [], start=1) if v]
+    if not rows:
+        return None
+    fig, ax = plt.subplots(figsize=(4.8, 0.26 * (len(rows) + 1)), dpi=100)
+    fig.patch.set_facecolor("#16181d")
+    ax.axis("off")
+    tbl = ax.table(cellText=rows, colLabels=["Rep", "Con s", "Vel", "Peak", "Ecc"],
+                   loc="center", cellLoc="center")
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(8)
+    for (r, _c), cell in tbl.get_celld().items():
+        cell.set_edgecolor("#333333")
+        cell.set_facecolor("#1e2128" if r == 0 else "#16181d")
+        cell.set_text_props(color="#ffffff" if r == 0 else "#cfcfcf")
+    fig.tight_layout(pad=0.15)
+    img = _fig_to_bgr(fig)
+    h0, w0 = img.shape[:2]
+    return cv2.resize(img, (width_px, int(h0 * width_px / w0)))
+
+
 def angle_curve(analysis: dict):
     """Primary joint angle over time, with a dashed line at each rep bottom."""
     key = analysis["primary_key"]
