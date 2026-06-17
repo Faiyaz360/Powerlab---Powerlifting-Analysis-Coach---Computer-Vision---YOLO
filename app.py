@@ -14,7 +14,7 @@ import gradio as gr
 import numpy as np
 
 from src import advanced_metrics as am
-from src import charts, confidence as conf, history, marking, media, pipeline, plate_dataset
+from src import barbell, charts, confidence as conf, history, marking, media, pipeline, plate_dataset
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -338,6 +338,25 @@ def on_tap(frame0, cx, cy, r, tap_state, evt: gr.SelectData):
     return _reticle_view(frame0, cx, cy, r), cx, cy, r, nxt, instr
 
 
+def on_autodetect(frame0):
+    """Quick mode: find the plate automatically (largest round, saturated blob) and fill the marker
+    so you can skip tapping. Adjustable before analysing — auto-detect trades a little scale
+    accuracy for speed, so it's a convenience, not a replacement for a careful mark."""
+    if frame0 is None:
+        return gr.update(), gr.update(), gr.update(), gr.update(), 0, SEED_INSTR
+    h = frame0.shape[0]
+    min_r, max_r = int(h * 0.05), int(h * 0.25)
+    bgr = cv2.cvtColor(frame0, cv2.COLOR_RGB2BGR)   # frame0 is RGB; _detect_plate expects BGR
+    hit = barbell._detect_plate(bgr, np.array([np.nan, np.nan]),
+                                min_r, max_r, np.pi * min_r * min_r * 0.5)
+    if hit is None:
+        return (gr.update(), gr.update(), gr.update(), gr.update(), 0,
+                "No plate found automatically — tap the plate to mark it.")
+    (cx, cy), r = hit
+    return (_reticle_view(frame0, int(cx), int(cy), int(r)), int(cx), int(cy), int(r), 0,
+            "Auto-detected the plate ✓ — adjust if needed, then **Analyse**.")
+
+
 @spaces.GPU(duration=120)
 def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, skel,
             progress=gr.Progress()):
@@ -425,6 +444,7 @@ with gr.Blocks(title="Form Lab") as demo:
             seed_img = gr.Image(label="Mark the plate — align the circle", type="numpy",
                                 interactive=False, elem_id="fl-seed")
             seed_instr = gr.Markdown(SEED_INSTR)
+            auto_btn = gr.Button("Auto-detect plate (quick)", size="sm")
             with gr.Accordion("Adjust by hand (optional)", open=False):
                 with gr.Row():
                     seed_cx = gr.Slider(0, 1, value=0, step=1, label="Centre X")
@@ -486,6 +506,8 @@ with gr.Blocks(title="Form Lab") as demo:
         _sld.release(on_reticle, [frame0_state, seed_cx, seed_cy, seed_radius], seed_img)
     seed_img.select(on_tap, [frame0_state, seed_cx, seed_cy, seed_radius, tap_state],
                     [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
+    auto_btn.click(on_autodetect, [frame0_state],
+                   [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
     run_btn.click(analyze,
                   [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
