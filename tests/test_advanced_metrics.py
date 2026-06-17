@@ -13,6 +13,15 @@ def test_velocity_loss_basic():
     assert loss == 20.0
 
 
+def test_velocity_zone_bands():
+    assert am.velocity_zone(1.2) == "Speed"
+    assert am.velocity_zone(0.85) == "Speed-Strength"
+    assert am.velocity_zone(0.60) == "Strength-Speed"
+    assert am.velocity_zone(0.40) == "Heavy Strength"
+    assert am.velocity_zone(0.20) == "Max Strength"
+    assert am.velocity_zone(None) is None
+
+
 def test_velocity_loss_needs_two_reps():
     assert am.velocity_loss_pct([{"mean_velocity_ms": 0.5}]) is None
 

@@ -4,6 +4,7 @@ Run:  .\.venv\Scripts\python.exe app.py   then open http://127.0.0.1:7860
 """
 from __future__ import annotations
 
+import csv
 import os
 import shutil
 from datetime import datetime
@@ -198,11 +199,42 @@ def _velocity_table(a: dict):
             continue
         if v.get("calibrated"):
             rows.append([i, v.get("concentric_s"), v.get("mean_velocity_ms"),
-                         v.get("peak_velocity_ms"), v.get("eccentric_s"), v.get("rom_m")])
+                         v.get("peak_velocity_ms"), v.get("eccentric_s"), v.get("rom_m"),
+                         am.velocity_zone(v.get("mean_velocity_ms")) or "—"])
         else:
             rows.append([i, v.get("concentric_s"), v.get("mean_velocity_px_s"),
-                         v.get("peak_velocity_px_s"), v.get("eccentric_s"), v.get("rom_px")])
+                         v.get("peak_velocity_px_s"), v.get("eccentric_s"), v.get("rom_px"), "—"])
     return rows
+
+
+def _session_csv(a, sc, s, adv, lifter_name, bar_load, name) -> str:
+    """Write a spreadsheet-friendly CSV of the session (a summary block + per-rep rows) to OUT_DIR;
+    return its path for a download button. Open in Sheets/Excel to track lifts over time."""
+    mcv, _ = _first_velocity(a)
+    e1rm = s["e1rm"]["e1rm_kg"] if s and s.get("e1rm") else ""
+    summary = [
+        ("lifter", lifter_name or ""), ("lift", a["lift"]), ("lift_weight_kg", bar_load or ""),
+        ("score_/100", sc["score"] if sc else ""), ("grade", sc["grade"] if sc else ""),
+        ("validated", sc["validated"] if sc else ""), ("reps", a["rep_count"]),
+        ("mean_velocity_ms", mcv if mcv is not None else ""),
+        ("velocity_loss_pct", adv["vloss"] if adv["vloss"] is not None else ""),
+        ("consistency_pct", adv["consistency"] if adv["consistency"] is not None else ""),
+        ("dots", s["dots"] if s else ""), ("est_1rm_kg", e1rm),
+    ]
+    path = os.path.join(OUT_DIR, f"{name}_session.csv")
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["metric", "value"])
+        w.writerows(summary)
+        w.writerow([])
+        w.writerow(["rep", "concentric_s", "mean_vel_ms", "peak_vel_ms", "eccentric_s", "rom_m", "zone"])
+        for i, v in enumerate(a.get("bar_velocity") or [], start=1):
+            if not v:
+                continue
+            w.writerow([i, v.get("concentric_s"), v.get("mean_velocity_ms"),
+                        v.get("peak_velocity_ms"), v.get("eccentric_s"), v.get("rom_m"),
+                        am.velocity_zone(v.get("mean_velocity_ms")) or ""])
+    return path
 
 
 def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
@@ -540,6 +572,7 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
                                               lifter_name=name_clean or None, sc=sc,
                                               validated=int(on_board)))
     _snapshot_db()   # persist the leaderboard to the mounted bucket (no-op if none)
+    csv_path = _session_csv(a, sc, s, adv, name_clean, bar_load, name)
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
     return (
         result["paths"]["annotated_video"],
@@ -553,6 +586,7 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
         _velocity_table(a),
         charts.velocity_bars(a.get("bar_velocity") or []),
         charts.bar_path(a),
+        csv_path,
     )
 
 
@@ -621,8 +655,9 @@ with gr.Blocks(title="Form Lab") as demo:
                                  elem_id="fl-video")
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
         gr.HTML("<div class='fl-sec'>PER-REP VELOCITY</div>")
-        reps_table = gr.Dataframe(headers=["Rep", "Con s", "Vel m/s", "Peak m/s", "Ecc s", "ROM m"],
-                                  interactive=False, elem_classes="fl-narrow")
+        reps_table = gr.Dataframe(
+            headers=["Rep", "Con s", "Vel m/s", "Peak m/s", "Ecc s", "ROM m", "Zone"],
+            interactive=False, elem_classes="fl-narrow")
         mcv_out = gr.Plot(label="Mean velocity per rep", show_label=False, elem_classes="fl-narrow")
         vel_out = gr.Plot(label="Bar velocity over time", show_label=False, elem_classes="fl-narrow")
         cards_out = gr.HTML()
@@ -635,6 +670,7 @@ with gr.Blocks(title="Form Lab") as demo:
                 angle_out = gr.Plot(label="Joint angle")
                 path_out = gr.Plot(label="Bar path")
             report_out = gr.Markdown()
+        csv_out = gr.File(label="Download session data (CSV)", elem_classes="fl-narrow")
 
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
         source_state = gr.State(None)   # full transcoded clip (trim source, non-cumulative)
@@ -673,7 +709,7 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
                   [video_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
-                   report_out, reps_table, mcv_out, path_out])
+                   report_out, reps_table, mcv_out, path_out, csv_out])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     board_tab.select(load_board, [board_by, board_lift], board_out)

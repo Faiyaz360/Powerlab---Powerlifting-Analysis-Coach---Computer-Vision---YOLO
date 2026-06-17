@@ -41,6 +41,22 @@ def test_load_board_end_to_end(tmp_path, monkeypatch):
     assert "Ann" in html and "91" in html
 
 
+def test_session_csv_has_summary_and_per_rep_rows(tmp_path, monkeypatch):
+    monkeypatch.setattr(app, "OUT_DIR", str(tmp_path))
+    a = {"lift": "squat", "rep_count": 2, "bar_velocity": [
+        {"concentric_s": 1.0, "mean_velocity_ms": 0.50, "peak_velocity_ms": 0.80,
+         "eccentric_s": 1.2, "rom_m": 0.52},
+        {"concentric_s": 1.1, "mean_velocity_ms": 0.48, "peak_velocity_ms": 0.78,
+         "eccentric_s": 1.1, "rom_m": 0.51}]}
+    sc = {"score": 88, "grade": "A", "validated": True}
+    s = {"dots": 110.0, "e1rm": {"e1rm_kg": 150.0}}
+    adv = {"vloss": 4.0, "consistency": 92.0, "peak_drift_cm": None, "sticking_pct": None}
+    path = app._session_csv(a, sc, s, adv, "Ann", 130, "vid")
+    text = open(path, encoding="utf-8").read()
+    assert "lifter" in text and "Ann" in text          # summary block
+    assert "rep,concentric_s" in text and "0.5" in text  # per-rep table
+
+
 def test_db_snapshot_restore_survives_a_restart(tmp_path, monkeypatch):
     """Leaderboard DB snapshots to the mounted bucket and restores onto a fresh (post-restart) disk."""
     bucket = tmp_path / "bucket"

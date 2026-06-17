@@ -147,3 +147,20 @@ def velocity_to_rpe(mcv: float | None, lift: str) -> float | None:
         return None
     xs, rpe = _RPE_TABLE[lift]
     return round(float(np.interp(mcv, xs, rpe)), 1)
+
+
+# General VBT training-zone bands by mean concentric velocity (m/s), descending. These label the
+# speed-strength continuum (what quality the rep trained), distinct from RPE (how close to failure).
+# Generalized across squat/deadlift — calibrate per lifter. (lower_bound, label)
+_VELOCITY_ZONES = [(1.00, "Speed"), (0.75, "Speed-Strength"), (0.50, "Strength-Speed"),
+                   (0.30, "Heavy Strength"), (0.00, "Max Strength")]
+
+
+def velocity_zone(mcv: float | None) -> str | None:
+    """Qualitative VBT zone from mean concentric velocity (m/s). None when there's no velocity."""
+    if mcv is None:
+        return None
+    for lower, label in _VELOCITY_ZONES:
+        if mcv >= lower:
+            return label
+    return "Max Strength"
