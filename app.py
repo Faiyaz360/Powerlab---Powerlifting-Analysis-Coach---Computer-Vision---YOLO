@@ -346,17 +346,15 @@ def on_tap(frame0, cx, cy, r, tap_state, evt: gr.SelectData):
 
 
 def _auto_or_default(frame, h, w):
-    """Auto-detect the plate (largest round, saturated blob); fall back to a centred circle.
-    ``frame`` is RGB. Returns (cx, cy, r, detected)."""
+    """Auto-detect the plate (colour blob, then a shape/Hough fallback for dull/black plates); fall
+    back to a centred circle. ``frame`` is RGB. Returns (cx, cy, r, detected)."""
     cx, cy, r = w // 2, h // 2, round(h * 0.12)
     if frame is None:
         return cx, cy, r, False
     try:
-        mr, mxr = int(h * 0.05), int(h * 0.25)
-        hit = barbell._detect_plate(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
-                                    np.array([np.nan, np.nan]), mr, mxr, np.pi * mr * mr * 0.5)
+        hit = barbell.detect_plate_seed(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR), h)
         if hit is not None:
-            return int(hit[0][0]), int(hit[0][1]), int(hit[1]), True
+            return int(hit[0]), int(hit[1]), int(hit[2]), True
     except Exception:
         pass
     return cx, cy, r, False

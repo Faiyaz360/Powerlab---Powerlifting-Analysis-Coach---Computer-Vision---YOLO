@@ -257,6 +257,36 @@ def _detect_plate(frame, anchor, min_r, max_r, min_area):
     return best
 
 
+def detect_plate_seed(frame_bgr, h):
+    """Best-effort plate find for the UPLOAD marker, BEFORE any pose is run. Tries the colour
+    detector first (largest round saturated blob), and if that finds nothing falls back to a
+    Hough-circle search that catches matte-black / chrome / iron plates by SHAPE alone — the dull
+    plates the colour detector misses. This only seeds the marker the user then eyeballs (a tap
+    fixes it), so a rough hit is fine. Returns (cx, cy, r) or None.
+    """
+    if frame_bgr is None:
+        return None
+    min_r, max_r = int(h * 0.05), int(h * 0.25)
+    hit = _detect_plate(frame_bgr, np.array([np.nan, np.nan]), min_r, max_r,
+                        np.pi * min_r * min_r * 0.5)
+    if hit is not None:
+        return int(hit[0][0]), int(hit[0][1]), int(hit[1])
+    return _detect_plate_hough(frame_bgr, min_r, max_r)
+
+
+def _detect_plate_hough(frame_bgr, min_r, max_r):
+    """Largest circle in the plausible plate-size band via the Hough gradient transform — colour
+    agnostic, so it catches plates the HSV detector misses (black/chrome/iron). Best-effort seed
+    only. Returns (cx, cy, r) or None."""
+    gray = cv2.medianBlur(cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2GRAY), 5)
+    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1.2, minDist=max(1, max_r),
+                               param1=100, param2=30, minRadius=min_r, maxRadius=max_r)
+    if circles is None:
+        return None
+    x, y, r = max(circles[0], key=lambda c: c[2])          # largest plausible circle
+    return int(x), int(y), int(r)
+
+
 def _anchor_series(pose: P.PoseResult, lift: str) -> np.ndarray:
     lm = pose.landmarks
     li, ri = _BAR_ANCHOR[lift]

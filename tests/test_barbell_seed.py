@@ -15,6 +15,24 @@ def test_scale_from_seed_none_on_bad_radius():
     assert barbell.scale_from_seed(None) is None
 
 
+def test_detect_plate_seed_hough_finds_a_matte_plate():
+    """A black (unsaturated) plate gives the HSV colour detector nothing, so the seed finder must
+    fall back to Hough (shape) and still locate it — the case the user hits with non-vivid plates."""
+    h, w = 240, 320
+    frame = np.full((h, w, 3), 200, np.uint8)              # light-grey background
+    cv2.circle(frame, (160, 120), 40, (0, 0, 0), -1)       # matte black plate, low saturation
+    mr = int(h * 0.05)
+    # the colour detector alone sees nothing on a dull plate...
+    assert barbell._detect_plate(frame, np.array([np.nan, np.nan]), mr, int(h * 0.25),
+                                 np.pi * mr * mr * 0.5) is None
+    # ...but the seed finder falls back to Hough and locates it within the plate-size band
+    hit = barbell.detect_plate_seed(frame, h)
+    assert hit is not None
+    cx, cy, r = hit
+    assert abs(cx - 160) < 20 and abs(cy - 120) < 20
+    assert mr <= r <= int(h * 0.25)
+
+
 def test_track_from_seed_follows_a_moving_plate(tmp_path):
     """Synthetic clip: a blue disk with a white hub slides down. Seeded on frame 0, the manual
     template tracker should follow it (y rises, x stays put)."""
