@@ -8,6 +8,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from . import angles
 from . import pose as P
 
 GREEN = (0, 255, 0)
@@ -19,12 +20,6 @@ MAGENTA = (255, 0, 255)
 SKELETON = (230, 230, 230)  # faint full-body skeleton, under the bold analysis chain
 PATH_FADED = (150, 150, 150)  # completed reps drawn faint grey under the bright current-rep path
 START_LINE = (60, 200, 255)   # amber 'start' reference line (BGR)
-
-# which landmark labels the primary angle, per side
-_PRIMARY_JOINT = {
-    "knee": (P.L_KNEE, P.R_KNEE),
-    "hip": (P.L_HIP, P.R_HIP),
-}
 
 
 def _xy(landmarks, f, idx):
@@ -64,8 +59,6 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     """Write an annotated mp4 to ``out_path``."""
     lm = pose.landmarks
     side = analysis["series"]["side"]
-    primary_key = analysis["primary_key"]
-    primary = analysis["series"][primary_key]
     reps = analysis["reps"]
     rep_metrics = analysis["rep_metrics"]
     bar_xy = analysis.get("bar_xy")
@@ -74,10 +67,8 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
 
     if side == "left":
         chain = [P.L_SHOULDER, P.L_HIP, P.L_KNEE, P.L_ANKLE, P.L_FOOT]
-        joint_idx = _PRIMARY_JOINT[primary_key][0]
     else:
         chain = [P.R_SHOULDER, P.R_HIP, P.R_KNEE, P.R_ANKLE, P.R_FOOT]
-        joint_idx = _PRIMARY_JOINT[primary_key][1]
 
     rep_end_frames = [r["end"] for r in reps]
     badge_window = max(1, int(pose.fps * 0.3))  # show each badge ~0.3s around its frame
@@ -90,11 +81,12 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     bar_load = analysis.get("bar_load")
     bar_velocity = analysis.get("bar_velocity") or []
     bar_reps = analysis.get("bar_reps") or []
-    start_y = None
+    start_y = start_x = None
     if bar_xy is not None:
         valid = np.where(~np.isnan(bar_xy[:, 1]))[0]
         if len(valid):
             start_y = float(bar_xy[valid[0], 1])     # where the bar began = the start line
+            start_x = float(bar_xy[valid[0], 0])     # bar's start X = the vertical 'centre' line
     rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
 
     # On-video real-time velocity graph: precompute the curve's pixel points once (frame dims fixed).
@@ -131,9 +123,13 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
                     _draw_skeleton(frame, lm, f, chain, region)
                 else:                                      # "side": camera-side sagittal points only
                     _draw_side_skeleton(frame, lm, f, side, region)
-                _draw_angle(frame, lm, f, joint_idx, primary)
+                _draw_joint_angles(frame, lm, f, side, region)
             if start_y is not None:
                 _draw_start_line(frame, start_y)
+            if start_x is not None:
+                cur = bar_xy[f] if (bar_xy is not None and f < len(bar_xy)
+                                    and not np.any(np.isnan(bar_xy[f]))) else None
+                _draw_center_line(frame, start_x, cur, scale)
             _draw_bar_path(frame, bar_xy, f, bar_speeds, bar_vmax, cur_start)
             done = sum(1 for e in rep_end_frames if e <= f)
             speed_ms = (bar_speeds[f] * fps * scale) if (bar_speeds is not None and scale) else None
@@ -211,11 +207,23 @@ def _draw_side_skeleton(frame, lm, f, side, region):
             cv2.circle(frame, p, 6, ORANGE, -1)
 
 
-def _draw_angle(frame, lm, f, joint_idx, primary):
-    jp = _xy(lm, f, joint_idx)
-    if jp and not np.isnan(primary[f]):
-        cv2.putText(frame, f"{primary[f]:.0f}", (jp[0] + 12, jp[1]),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.8, WHITE, 2)
+def _draw_joint_angles(frame, lm, f, side, region):
+    """Live joint-angle numbers at the camera-side knee, hip and elbow (LIFT-APP style). Computed
+    per frame from the landmarks; occluded/degenerate joints are skipped."""
+    if side == "left":
+        joints = [(P.L_HIP, P.L_KNEE, P.L_ANKLE), (P.L_SHOULDER, P.L_HIP, P.L_KNEE),
+                  (P.L_SHOULDER, P.L_ELBOW, P.L_WRIST)]
+    else:
+        joints = [(P.R_HIP, P.R_KNEE, P.R_ANKLE), (P.R_SHOULDER, P.R_HIP, P.R_KNEE),
+                  (P.R_SHOULDER, P.R_ELBOW, P.R_WRIST)]
+    s = max(0.5, frame.shape[1] / 1300.0)
+    for a, b, c in joints:
+        pa, pb, pc = _xy_ok(lm, f, a, region), _xy_ok(lm, f, b, region), _xy_ok(lm, f, c, region)
+        if pa and pb and pc:
+            ang = angles.calc_angle(pa, pb, pc)
+            if not np.isnan(ang):
+                cv2.putText(frame, f"{ang:.0f}", (pb[0] + int(10 * s), pb[1]),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6 * s, WHITE, max(1, int(2 * s)), cv2.LINE_AA)
 
 
 def _speed_color(t: float):
@@ -276,6 +284,20 @@ def _draw_start_line(frame, start_y):
     (tw, th), _ = cv2.getTextSize("start", cv2.FONT_HERSHEY_SIMPLEX, s, 2)
     cv2.rectangle(frame, (6, max(0, y - th - 12)), (6 + tw + 10, max(th + 4, y - 2)), (30, 30, 34), -1)
     cv2.putText(frame, "start", (11, max(th, y - 8)), cv2.FONT_HERSHEY_SIMPLEX, s, START_LINE, 2, cv2.LINE_AA)
+
+
+def _draw_center_line(frame, start_x, cur_xy, scale):
+    """Vertical dashed reference at the bar's starting X (the 'centre' line) + the live sideways
+    drift in cm — LIFT-APP style, so you see how far the bar wanders from where it began."""
+    h = frame.shape[0]
+    sx = int(start_x)
+    for y in range(0, h, 26):
+        cv2.line(frame, (sx, y), (sx, min(y + 13, h)), (170, 170, 174), 1, cv2.LINE_AA)
+    if cur_xy is not None and scale:
+        drift_cm = (float(cur_xy[0]) - start_x) * scale * 100
+        s = max(0.5, frame.shape[1] / 1300.0)
+        cv2.putText(frame, f"drift {drift_cm:+.1f} cm", (sx + 6, int(34 * s)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5 * s, (170, 170, 174), 1, cv2.LINE_AA)
 
 
 def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):

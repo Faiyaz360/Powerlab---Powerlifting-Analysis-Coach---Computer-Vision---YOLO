@@ -386,6 +386,7 @@ def analyze(video_path, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0,
         report_md,
         _velocity_table(a),
         charts.velocity_bars(a.get("bar_velocity") or []),
+        charts.bar_path(a),
     )
 
 
@@ -453,7 +454,9 @@ with gr.Blocks(title="Form Lab") as demo:
 
         # --- extra detail tucked away so the main screen stays uncluttered ---
         with gr.Accordion("Charts & full report", open=False):
-            angle_out = gr.Plot(label="Joint angle")
+            with gr.Row():
+                angle_out = gr.Plot(label="Joint angle")
+                path_out = gr.Plot(label="Bar path")
             report_out = gr.Markdown()
 
         frame0_state = gr.State(None)   # clean first frame (RGB) for redraws + training save
@@ -487,7 +490,7 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
                   [video_out, verdict_out, cards_out, strength_out, angle_out, vel_out, report_out,
-                   reps_table, mcv_out])
+                   reps_table, mcv_out, path_out])
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
 

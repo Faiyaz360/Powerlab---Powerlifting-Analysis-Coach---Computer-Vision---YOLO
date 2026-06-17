@@ -69,6 +69,37 @@ def velocity_time(analysis: dict):
     return fig
 
 
+def bar_path(analysis: dict):
+    """The bar's 2D trajectory: sideways drift (cm) vs height (cm) — the classic bar-path plot.
+    A near-vertical line = a clean path; the dashed line is the start (centre). Empty-safe."""
+    bar_xy = analysis.get("bar_xy")
+    scale = analysis.get("scale_m_per_px")
+    fig, ax = plt.subplots(figsize=(3.2, 3.4))
+    if bar_xy is None or scale is None:
+        ax.text(0.5, 0.5, "no bar-path data", ha="center", va="center")
+        ax.axis("off")
+        fig.tight_layout()
+        return fig
+    x = bar_xy[:, 0].astype(float)
+    y = bar_xy[:, 1].astype(float)
+    ok = ~(np.isnan(x) | np.isnan(y))
+    x, y = x[ok], y[ok]
+    if len(x) == 0:
+        ax.text(0.5, 0.5, "no bar-path data", ha="center", va="center")
+        ax.axis("off")
+        fig.tight_layout()
+        return fig
+    dx = (x - x[0]) * scale * 100            # sideways drift from start (cm)
+    dh = (y[0] - y) * scale * 100            # height vs start (cm), up positive
+    ax.plot(dx, dh, color="#378ADD", lw=1)
+    ax.axvline(0, color="#9AA0A6", ls="--", lw=0.8)   # the 'centre' (start X)
+    ax.set_xlabel("drift (cm)")
+    ax.set_ylabel("height (cm)")
+    ax.set_aspect("equal", "box")
+    fig.tight_layout()
+    return fig
+
+
 def drift_curve(bar_xy: np.ndarray, scale_m_per_px: float | None, start: int, end: int):
     """Horizontal bar-path drift over a rep (cm). Empty-safe when uncalibrated."""
     fig, ax = plt.subplots(figsize=(4, 2.4))
