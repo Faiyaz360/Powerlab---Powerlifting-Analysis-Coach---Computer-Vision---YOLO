@@ -231,12 +231,27 @@ tbody td, .table td {background: transparent !important; border-color: rgba(255,
 .fl-bad {background: rgba(248,113,113,.14) !important; color: #fca5a5 !important;}
 /* active tab: light text, purple underline */
 .tab-nav button.selected {color: #d7d2ff !important; border-bottom-color: #8b7bf0 !important;}
-/* mobile spacing */
+/* mobile spacing — the container/overflow fix lives in HEAD (css= is scoped by Gradio to
+   `.contain ...`, so it can't reach the <gradio-app> / .gradio-container ancestors). */
 @media (max-width: 600px) {
-  .gradio-container {padding: 0 10px !important;}
   .fl-card, .fl-score, .fl-coach, .fl-verdict {padding: 16px !important;}
+  .fl-narrow .table-wrap, .table-wrap {overflow-x: auto;}
+}"""
+
+# Injected raw into <head> — NOT scoped by Gradio (unlike css=), so it reaches the ancestors
+# <gradio-app> and .gradio-container. Mobile fix: the container is a flex item with min-width:auto,
+# so it won't shrink below its content (469px) -> horizontal overflow on phones. Neutralise the flex
+# parent and let the container + every child shrink to the viewport.
+HEAD = """
+<style>
+@media (max-width: 600px) {
+  gradio-app { display: block !important; }
+  gradio-app .gradio-container { min-width: 0 !important; width: 100% !important; max-width: 100vw !important;
+                                 padding-left: 10px !important; padding-right: 10px !important; }
+  gradio-app .gradio-container * { min-width: 0 !important; }
+  html, body { overflow-x: hidden !important; max-width: 100vw !important; }
 }
-"""
+</style>"""
 
 
 # ---------------------------------------------------------------- metric helpers
@@ -740,10 +755,12 @@ def load_history(metric: str, lift: str, lifter: str):
     return table, fig, bests
 
 
-def on_history_open(metric: str, lift: str, lifter: str):
-    """Tab-open: refresh the lifter dropdown choices, then load (value kept if still valid)."""
-    table, fig, bests = load_history(metric, lift, lifter)
-    return gr.update(choices=[""] + history.lifters(DB_PATH)), table, fig, bests
+def on_history_open(metric: str, lift: str, name: str):
+    """Tab-open: focus History on the CURRENT lifter (the name from the Analyse tab), not everyone.
+    The dropdown still lets them switch; this just defaults to whoever just analysed."""
+    name = (name or "").strip()
+    table, fig, bests = load_history(metric, lift, name)
+    return gr.update(value=name, choices=[""] + history.lifters(DB_PATH)), table, fig, bests
 
 
 # ---------------------------------------------------------------- UI
@@ -860,7 +877,8 @@ with gr.Blocks(title="Form Lab") as demo:
     for _c in (metric_in, hist_lift, hist_lifter):
         _c.change(load_history, _hist_in, _hist_out)
     refresh_btn.click(load_history, _hist_in, _hist_out)
-    history_tab.select(on_history_open, _hist_in, [hist_lifter, hist_table, trend_out, bests_out])
+    history_tab.select(on_history_open, [metric_in, hist_lift, name_in],
+                       [hist_lifter, hist_table, trend_out, bests_out])
     board_tab.select(load_board, [board_by, board_lift], board_out)
     board_refresh.click(load_board, [board_by, board_lift], board_out)
     board_by.change(load_board, [board_by, board_lift], board_out)
@@ -869,4 +887,4 @@ with gr.Blocks(title="Form Lab") as demo:
 if __name__ == "__main__":
     _restore_db()              # pull the persisted leaderboard from the bucket (if mounted) first
     history.init_db(DB_PATH)   # then create / migrate the working DB
-    demo.launch(theme=THEME, css=CSS)
+    demo.launch(theme=THEME, css=CSS, head=HEAD)
