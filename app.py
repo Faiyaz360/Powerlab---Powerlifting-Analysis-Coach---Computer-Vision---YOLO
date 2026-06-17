@@ -182,24 +182,12 @@ footer {display: none !important;}
   --slider-color: #8b7bf0;
   --neutral-950: #0b0b0e; --neutral-900: #121218;
 }
-body, .gradio-container {
-  background: radial-gradient(900px 440px at 50% -16%, rgba(120,100,210,.10), transparent 60%), #0b0b0e !important;
-  color: var(--body-text-color);
-}
-.gradio-container {max-width: 640px !important;}
-/* glass: graphite translucency + hairline light border + soft top sheen */
-.fl-card, .fl-score, .fl-coach, .fl-verdict, .lb-row, .block {
+.gradio-container {color: var(--body-text-color);}
+/* feature panels keep a subtle card look (solid colours — NO blur/shadow/gradient/:has/.block) */
+.fl-card, .fl-score, .fl-coach, .fl-verdict, .lb-row {
   background: rgba(255,255,255,.03) !important;
-  border: 1px solid rgba(255,255,255,.07) !important;
-  border-radius: 16px !important;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
-}
-/* (backdrop-filter removed — it triggers a horizontal-overflow bug in iOS Safari and was invisible
-   on a near-black background anyway) */
-/* section headers are plain text, NOT cards (removes the big empty boxes) */
-.block:has(.fl-sec), .block:has(> .fl-cap) {
-  background: transparent !important; border: none !important; box-shadow: none !important;
-  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; padding: 0 !important;}
+  border: 1px solid rgba(255,255,255,.08) !important;
+  border-radius: 14px !important;}
 .fl-sec {margin: 22px 2px 8px !important; font-size: 11.5px; letter-spacing: .12em;
          text-transform: uppercase; font-weight: 600; color: rgba(172,170,182,.5) !important;}
 .block-title, .block-info {background: transparent !important; color: rgba(172,170,182,.62) !important;
@@ -239,33 +227,19 @@ img, canvas {max-width: 100% !important; height: auto !important;}
 video {max-width: 100% !important;}
 .svelte-plot, .js-plotly-plot, .plotly {max-width: 100% !important;}
 
-/* mobile. css= is scoped by Gradio to `.contain ...`, so `*` here = `.contain *` — which lets EVERY
-   content element shrink. That collapses the container's min-content so the flex container fits the
-   viewport even if HEAD's ancestor rule doesn't apply (e.g. on Spaces). Belt-and-suspenders. */
+/* mobile spacing + table scroll only — NO structural width hacks (those broke iOS Safari layout) */
 @media (max-width: 600px) {
-  * {min-width: 0 !important;}
   .fl-card, .fl-score, .fl-coach, .fl-verdict {padding: 16px !important;}
-  .fl-narrow .table-wrap, .table-wrap, .table-wrap {overflow-x: auto !important;}
-  .gr-dataframe, .dataframe, table {max-width: 100% !important;}
+  .fl-narrow .table-wrap, .table-wrap {overflow-x: auto !important;}
 }"""
 
-# Injected raw into <head> — NOT scoped by Gradio (unlike css=), so it reaches the ancestors
-# <gradio-app> and .gradio-container. Mobile fix: the container is a flex item with min-width:auto,
-# so it won't shrink below its content (469px) -> horizontal overflow on phones. Neutralise the flex
-# parent and let the container + every child shrink to the viewport.
+# Injected via the gr.HTML(<style>) component below — lands in the DOM UNSCOPED (css= is scoped to
+# `.contain`), the only way to set the page-ROOT background, which css= can't reach. COLOUR + media
+# clamp ONLY: every structural override I tried here (overflow-x / min-width / width / display / vw)
+# broke iOS Safari's layout, so they're gone — the layout now uses Gradio's defaults (worked pre-theme).
 GLOBAL_STYLE = """<style>
-/* Reaches the page ROOT (html/body/gradio-app/.gradio-container) which Gradio's scoped css= cannot.
-   Delivered via a gr.HTML(<style>) component so it lands in the DOM UNSCOPED and renders on Spaces
-   (launch(head=) does not apply on HF Spaces). Belt: clamp media + hard-clip any residual overflow. */
+html, body, gradio-app { background: #0b0b0e !important; }
 img, video, canvas { max-width: 100% !important; height: auto !important; }
-html, body { overflow-x: hidden !important; max-width: 100% !important; }
-gradio-app, gradio-app .gradio-container { max-width: 100% !important; overflow-x: hidden !important; }
-@media (max-width: 600px) {
-  gradio-app { display: block !important; }
-  gradio-app .gradio-container { min-width: 0 !important; width: 100% !important;
-                                 padding-left: 10px !important; padding-right: 10px !important; }
-  gradio-app .gradio-container * { min-width: 0 !important; }
-}
 </style>"""
 HEAD = GLOBAL_STYLE   # also passed to launch(head=) for local dev (ignored on Spaces)
 
