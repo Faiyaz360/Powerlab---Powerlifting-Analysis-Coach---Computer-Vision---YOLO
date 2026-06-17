@@ -9,10 +9,11 @@ import sqlite3
 from pathlib import Path
 
 _COLUMNS = [
-    "created_at", "video_name", "lift", "view", "rep_count", "depth_pass", "confidence",
-    "mean_velocity", "peak_velocity", "rom_m", "consistency", "velocity_loss",
+    "created_at", "video_name", "lifter_name", "lift", "view", "rep_count", "depth_pass",
+    "confidence", "mean_velocity", "peak_velocity", "rom_m", "consistency", "velocity_loss",
     "sticking_pct", "bar_drift_cm", "bodyweight_kg", "bar_load_kg", "sex",
     "dots", "e1rm_kg", "peak_power_w", "est_rpe",
+    "score", "grade", "validated",
     "annotated_path", "metrics_json_path", "notes",
 ]
 
@@ -31,16 +32,17 @@ def _connect(db_path: str) -> sqlite3.Connection:
 
 
 def _sql_type(col: str) -> str:
-    if col in ("rep_count", "depth_pass"):
+    if col in ("rep_count", "depth_pass", "validated"):
         return "INTEGER"
-    if col in ("created_at", "video_name", "lift", "confidence", "sex",
-               "annotated_path", "metrics_json_path", "notes"):
+    if col in ("created_at", "video_name", "lifter_name", "lift", "confidence", "sex",
+               "grade", "annotated_path", "metrics_json_path", "notes"):
         return "TEXT"
     return "REAL"
 
 
 def init_db(db_path: str) -> None:
-    """Create the runs table if it does not exist."""
+    """Create the runs table if it does not exist, then add any columns missing from an older DB
+    (lightweight migration — the leaderboard columns slot into a pre-existing table without a wipe)."""
     schema = (
         "CREATE TABLE IF NOT EXISTS runs (\n"
         "  id INTEGER PRIMARY KEY AUTOINCREMENT,\n"
@@ -50,6 +52,10 @@ def init_db(db_path: str) -> None:
     )
     with _connect(db_path) as conn:
         conn.execute(schema)
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(runs)").fetchall()}
+        for col in _COLUMNS:
+            if col not in existing:
+                conn.execute(f"ALTER TABLE runs ADD COLUMN {col} {_sql_type(col)}")
 
 
 def save_run(db_path: str, record: dict) -> int:
@@ -101,3 +107,34 @@ def trend(db_path: str, metric: str, lift: str | None = None) -> list[tuple]:
     sql += " ORDER BY id ASC"
     with _connect(db_path) as conn:
         return [(row["created_at"], row[metric]) for row in conn.execute(sql, params).fetchall()]
+
+
+def leaderboard(db_path: str, by: str = "score", lift: str | None = None,
+                limit: int = 100) -> list[dict]:
+    """Ranked best-per-lifter board over VALIDATED lifts only.
+
+    ``by='score'`` ranks by each lifter's best execution score; ``by='weight'`` by their heaviest
+    lift. One row per lifter (their single best for that board; SQLite returns the matching row's
+    other columns alongside the MAX). Names are grouped case-insensitively. Optional ``lift`` filter.
+    Each returned dict gains a 1-based ``rank``.
+    """
+    if by not in ("score", "weight"):
+        raise ValueError(f"Unknown leaderboard sort: {by}")
+    init_db(db_path)
+    rank_col = "score" if by == "score" else "bar_load_kg"
+    other_col = "bar_load_kg" if by == "score" else "score"   # carried along as a bare column
+    cols = ["lifter_name", "lift", "sex", "bodyweight_kg", "dots", "grade", "created_at", other_col]
+    sql = (f"SELECT {', '.join(cols)}, MAX({rank_col}) AS {rank_col} FROM runs "
+           "WHERE validated = 1 AND lifter_name IS NOT NULL AND TRIM(lifter_name) != '' "
+           f"AND {rank_col} IS NOT NULL")
+    params: list = []
+    if lift:
+        sql += " AND lift = ?"
+        params.append(lift)
+    sql += f" GROUP BY lifter_name COLLATE NOCASE ORDER BY {rank_col} DESC LIMIT ?"
+    params.append(limit)
+    with _connect(db_path) as conn:
+        rows = [dict(row) for row in conn.execute(sql, params).fetchall()]
+    for i, row in enumerate(rows, start=1):
+        row["rank"] = i
+    return rows
