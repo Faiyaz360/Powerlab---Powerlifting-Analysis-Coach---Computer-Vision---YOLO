@@ -19,38 +19,6 @@ def _fig_to_bgr(fig):
     return bgr
 
 
-def bar_path_img(analysis: dict, width_px: int = 200):
-    """The bar-path plot as a compact dark BGR image for the on-video overlay (top-right corner).
-    None if there's no calibrated bar-path data."""
-    bar_xy = analysis.get("bar_xy")
-    scale = analysis.get("scale_m_per_px")
-    if bar_xy is None or scale is None:
-        return None
-    x = bar_xy[:, 0].astype(float)
-    y = bar_xy[:, 1].astype(float)
-    ok = ~(np.isnan(x) | np.isnan(y))
-    x, y = x[ok], y[ok]
-    if len(x) == 0:
-        return None
-    dx = (x - x[0]) * scale * 100
-    dh = (y[0] - y) * scale * 100
-    fig, ax = plt.subplots(figsize=(2.0, 2.3), dpi=100)
-    fig.patch.set_facecolor("#16181d")
-    ax.set_facecolor("#16181d")
-    ax.plot(dx, dh, color="#5AC8FA", lw=1.2)
-    ax.axvline(0, color="#888888", ls="--", lw=0.7)
-    ax.set_title("bar path", color="#dddddd", fontsize=8)
-    ax.set_xlabel("drift cm", color="#aaaaaa", fontsize=7)
-    ax.tick_params(colors="#999999", labelsize=6)
-    for sp in ax.spines.values():
-        sp.set_color("#444444")
-    ax.set_aspect("equal", "box")
-    fig.tight_layout(pad=0.3)
-    img = _fig_to_bgr(fig)
-    h0, w0 = img.shape[:2]
-    return cv2.resize(img, (width_px, int(h0 * width_px / w0)))
-
-
 def _cell(x):
     if x is None:
         return "-"

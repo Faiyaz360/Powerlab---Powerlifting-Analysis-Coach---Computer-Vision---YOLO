@@ -89,7 +89,31 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             start_y = float(bar_xy[valid[0], 1])     # where the bar began = the start line
             start_x = float(bar_xy[valid[0], 0])     # bar's start X = the vertical 'centre' line
     rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
-    path_panel = charts.bar_path_img(analysis, max(150, int(pose.width * 0.34)))  # top-right overlay
+    # Real-time bar-path panel (top-right): 2D trajectory, concentric (up) green / eccentric (down) blue.
+    path_panel_pts = path_runs = path_panel_box = None
+    if bar_xy is not None and start_x is not None:
+        x = bar_xy[:, 0].astype(float)
+        y = bar_xy[:, 1].astype(float)
+        pw = max(150, int(pose.width * 0.34))
+        ph = int(pw * 1.05)
+        bx0, by0, cxp = pose.width - pw - 12, 12, pose.width - pw - 12 + pw // 2
+        dxr = float(np.nanmax(np.abs(x - start_x))) or 1.0
+        ymin, ymax = float(np.nanmin(y)), float(np.nanmax(y))
+        yr = (ymax - ymin) or 1.0
+        ytop, ybot = by0 + int(ph * 0.20), by0 + int(ph * 0.84)
+        panel_x = np.clip(cxp + ((x - start_x) / dxr) * (pw * 0.40), bx0 + 4, bx0 + pw - 4)
+        panel_y = ytop + ((y - ymin) / yr) * (ybot - ytop)
+        path_panel_pts = np.stack([panel_x, panel_y], axis=1).astype(np.int32)
+        up = np.zeros(len(y), bool)
+        up[1:] = (y[1:] - y[:-1]) < 0                 # moving up = concentric
+        path_runs, s0 = [], 1                         # group frames into same-direction runs
+        for i in range(2, len(y)):
+            if up[i] != up[i - 1]:
+                path_runs.append((s0, i - 1, bool(up[i - 1])))
+                s0 = i
+        if len(y) > 1:
+            path_runs.append((s0, len(y) - 1, bool(up[-1])))
+        path_panel_box = (bx0, by0, bx0 + pw, by0 + ph, cxp, ytop, ybot)
 
     # Bottom overlays: the per-rep table (lowest strip) with the velocity graph just above it.
     table_img = charts.velocity_table_img(bar_velocity, int(pose.width * 0.92))
@@ -149,11 +173,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
             _draw_badge(frame, f, rep_metrics, badge_window)
             _draw_velocity_graph(frame, graph_pts, graph_box, f)
-            if path_panel is not None:
-                ph, pw = path_panel.shape[:2]
-                px, py = pose.width - pw - 12, 12
-                if 0 <= px and py + ph <= frame.shape[0] and px + pw <= frame.shape[1]:
-                    frame[py:py + ph, px:px + pw] = path_panel
+            _draw_path_panel(frame, path_panel_pts, path_runs, path_panel_box, f)
             if table_img is not None and table_xy is not None:
                 th, tw = table_img.shape[:2]
                 tx, ty = table_xy
@@ -374,6 +394,41 @@ def _draw_velocity_graph(frame, pts, box, f):
         cv2.putText(frame, label, (lx + int(9 * s), gy0 + int(18 * s)),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.45 * s, (215, 215, 219), 1, cv2.LINE_AA)
         lx += int(56 * s)
+
+
+_CONCENTRIC = (90, 210, 90)   # green (BGR)
+_ECCENTRIC = (235, 140, 40)   # blue (BGR)
+
+
+def _draw_path_panel(frame, pts, runs, box, f):
+    """Real-time bar-path panel (top-right): the bar's 2D trajectory drawn up to the current frame,
+    concentric (up) green and eccentric (down) blue, with a 'now' dot and a con/ecc key."""
+    if pts is None or box is None:
+        return
+    bx0, by0, bx1, by1, cxp, ytop, ybot = box
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (bx0, by0), (bx1, by1), (22, 24, 28), -1)
+    cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+    cv2.line(frame, (cxp, ytop), (cxp, ybot), (110, 110, 116), 1, cv2.LINE_AA)   # centre (start X)
+    s = max(0.4, (bx1 - bx0) / 360.0)
+    cv2.putText(frame, "bar path", (bx0 + 6, by0 + int(18 * s)), cv2.FONT_HERSHEY_SIMPLEX,
+                0.5 * s, (220, 220, 224), 1, cv2.LINE_AA)
+    for a, b, is_up in runs:
+        if a > f:
+            break
+        e = min(b, f)
+        if e > a:
+            cv2.polylines(frame, [pts[a:e + 1]], False, _CONCENTRIC if is_up else _ECCENTRIC,
+                          2, cv2.LINE_AA)
+    cf = min(f, len(pts) - 1)
+    cv2.circle(frame, (int(pts[cf][0]), int(pts[cf][1])), 3, WHITE, -1)          # 'now' dot
+    ly = by1 - int(10 * s)
+    cv2.circle(frame, (bx0 + 12, ly), 4, _CONCENTRIC, -1)
+    cv2.putText(frame, "con", (bx0 + 20, ly + int(4 * s)), cv2.FONT_HERSHEY_SIMPLEX, 0.42 * s,
+                (205, 205, 209), 1, cv2.LINE_AA)
+    cv2.circle(frame, (bx0 + int(70 * s), ly), 4, _ECCENTRIC, -1)
+    cv2.putText(frame, "ecc", (bx0 + int(78 * s), ly + int(4 * s)), cv2.FONT_HERSHEY_SIMPLEX,
+                0.42 * s, (205, 205, 209), 1, cv2.LINE_AA)
 
 
 def _draw_badge(frame, f, rep_metrics, window):
