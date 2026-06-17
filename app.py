@@ -231,11 +231,14 @@ tbody td, .table td {background: transparent !important; border-color: rgba(255,
 .fl-bad {background: rgba(248,113,113,.14) !important; color: #fca5a5 !important;}
 /* active tab: light text, purple underline */
 .tab-nav button.selected {color: #d7d2ff !important; border-bottom-color: #8b7bf0 !important;}
-/* mobile spacing — the container/overflow fix lives in HEAD (css= is scoped by Gradio to
-   `.contain ...`, so it can't reach the <gradio-app> / .gradio-container ancestors). */
+/* mobile. css= is scoped by Gradio to `.contain ...`, so `*` here = `.contain *` — which lets EVERY
+   content element shrink. That collapses the container's min-content so the flex container fits the
+   viewport even if HEAD's ancestor rule doesn't apply (e.g. on Spaces). Belt-and-suspenders. */
 @media (max-width: 600px) {
+  * {min-width: 0 !important;}
   .fl-card, .fl-score, .fl-coach, .fl-verdict {padding: 16px !important;}
-  .fl-narrow .table-wrap, .table-wrap {overflow-x: auto;}
+  .fl-narrow .table-wrap, .table-wrap, .table-wrap {overflow-x: auto !important;}
+  .gr-dataframe, .dataframe, table {max-width: 100% !important;}
 }"""
 
 # Injected raw into <head> — NOT scoped by Gradio (unlike css=), so it reaches the ancestors
