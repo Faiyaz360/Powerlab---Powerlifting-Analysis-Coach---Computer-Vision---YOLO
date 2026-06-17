@@ -18,7 +18,7 @@ import numpy as np
 
 from src import advanced_metrics as am
 from src import barbell, charts, confidence as conf, history, marking, media, pipeline
-from src import plate_dataset, score, share
+from src import lv_profile as lvmod, plate_dataset, score, share
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -104,6 +104,12 @@ footer {display: none !important;}
 .fl-guide {font-size: 13.5px; line-height: 1.7; color: var(--body-text-color);}
 .fl-guide b {color: #8b7bf0;}
 .fl-guide-note {display: inline-block; margin-top: 6px; color: var(--body-text-color-subdued);}
+.fl-lv {font-size: 13.5px; padding: 4px 2px;}
+.fl-lv-h {font-weight: 600; color: #8b7bf0; margin-bottom: 6px;}
+.fl-lv-t {width: 100%; border-collapse: collapse; margin-bottom: 8px;}
+.fl-lv-t th, .fl-lv-t td {text-align: left; padding: 4px 8px; border-bottom: 1px solid rgba(255,255,255,.07);}
+.fl-lv-t th {color: var(--body-text-color-subdued); font-weight: 500; font-size: 12px;}
+.fl-lv-1rm {margin: 6px 0;}
 .fl-sec {font-size: 13px; font-weight: 600; color: var(--body-text-color-subdued);
          margin: 14px 0 6px; letter-spacing: .02em;}
 .fl-narrow {max-width: 560px; margin: 0 auto;}
@@ -755,6 +761,18 @@ def on_share(meta):
     return clip, share.share_caption(meta)
 
 
+def _style_dark(fig, ax):
+    """Match the app's dark theme: near-black panel, muted ticks, faint grid."""
+    fig.patch.set_facecolor("#0e0e12")
+    ax.set_facecolor("#0e0e12")
+    for sp in ax.spines.values():
+        sp.set_color("#33333f")
+    ax.tick_params(colors="#9b98a8", labelsize=8)
+    ax.xaxis.label.set_color("#9b98a8")
+    ax.yaxis.label.set_color("#9b98a8")
+    ax.grid(True, color="#21212a", linewidth=0.6)
+
+
 def _trend_fig(series, metric):
     """Line chart of one metric over time (oldest -> newest). Empty-safe placeholder when no data."""
     fig = charts.velocity_bars([])
@@ -763,12 +781,60 @@ def _trend_fig(series, metric):
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
         fig, ax = plt.subplots(figsize=(5, 2.6))
-        ax.plot(range(len(series)), [v for _, v in series], marker="o", color="#378ADD")
+        ax.plot(range(len(series)), [v for _, v in series], marker="o", color="#8b7bf0")
         ax.set_xticks(range(len(series)))
         ax.set_xticklabels([t[5:10] for t, _ in series], rotation=45, fontsize=8)
         ax.set_ylabel(metric)
+        _style_dark(fig, ax)
         fig.tight_layout()
     return fig
+
+
+def _lv_chart(points, profile, lift):
+    """Scatter of (load, mean-velocity) points + the fitted load-velocity line. Empty-safe placeholder."""
+    fig = charts.velocity_bars([])
+    if points:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(figsize=(5, 2.8))
+        xs = [l for l, _ in points]
+        ys = [v for _, v in points]
+        ax.scatter(xs, ys, color="#8b7bf0", s=28, zorder=3)
+        if profile:
+            e1 = lvmod.est_1rm(profile, lift)
+            x0, x1 = min(xs), max([max(xs), e1] if e1 else [max(xs)])
+            ax.plot([x0, x1], [lvmod.velocity_at_load(profile, x0), lvmod.velocity_at_load(profile, x1)],
+                    color="#cfcdd8", lw=1.4, zorder=2)
+        ax.set_xlabel("load (kg)")
+        ax.set_ylabel("mean velocity (m/s)")
+        _style_dark(fig, ax)
+        fig.tight_layout()
+    return fig
+
+
+_LV_TARGETS = [(0.75, "speed / power"), (0.50, "strength-speed"), (0.30, "heavy strength")]
+
+
+def _lv_readout(profile, lift, n_points) -> str:
+    """Text card: today's suggested load at a few target velocities + an extrapolated 1RM estimate."""
+    if not profile:
+        more = "one more set at a new weight" if n_points == 1 else "a couple of sets at different loads"
+        return (f"<div class='fl-hint'>Log <b>at least 2 different loads</b> for this lift to build your "
+                f"load-velocity profile — do {more} and it appears here.</div>")
+    rows = []
+    for v, label in _LV_TARGETS:
+        load = lvmod.load_at_velocity(profile, v)
+        if load and load > 0:
+            rows.append(f"<tr><td>{v:.2f} m/s</td><td>{label}</td><td><b>{load:.0f} kg</b></td></tr>")
+    e1 = lvmod.est_1rm(profile, lift)
+    e1_html = (f"<div class='fl-lv-1rm'>Est. 1RM ≈ <b>{e1:.0f} kg</b> "
+               "<span class='fl-hint'>(extrapolated — a guide, not a max attempt)</span></div>"
+               if e1 and e1 > 0 else "")
+    return (f"<div class='fl-lv'><div class='fl-lv-h'>What weight today?</div>"
+            f"<table class='fl-lv-t'><tr><th>target</th><th>zone</th><th>load</th></tr>"
+            f"{''.join(rows)}</table>{e1_html}"
+            f"<span class='fl-hint'>fit R² {profile['r2']:.2f} · n={profile['n']}</span></div>")
 
 
 def _bests_html(b) -> str:
@@ -786,22 +852,34 @@ def _bests_html(b) -> str:
 
 
 def load_history(metric: str, lift: str, lifter: str):
-    """Past-runs table + a metric trend + personal-best cards, filtered by lift and/or lifter."""
+    """Past-runs table + metric trend + PBs + the load-velocity profile, filtered by lift and/or lifter."""
     lf = lifter or None
-    rows = history.list_runs(DB_PATH, lift=lift or None, lifter=lf)
+    lift_f = lift or None
+    rows = history.list_runs(DB_PATH, lift=lift_f, lifter=lf)
     table = [[r["created_at"][:16], r.get("lifter_name") or "—", r["lift"], r.get("bar_load_kg"),
               r.get("score"), r.get("e1rm_kg"), r.get("mean_velocity")] for r in rows]
-    fig = _trend_fig(history.trend(DB_PATH, metric, lift=lift or None, lifter=lf), metric)
-    bests = _bests_html(history.bests(DB_PATH, lifter=lf, lift=lift or None))
-    return table, fig, bests
+    fig = _trend_fig(history.trend(DB_PATH, metric, lift=lift_f, lifter=lf), metric)
+    bests = _bests_html(history.bests(DB_PATH, lifter=lf, lift=lift_f))
+    # Load-velocity profile is per-lift (squat and deadlift have different LV lines), so it needs a
+    # single lift selected — mixing them would fit a meaningless line.
+    if lift_f:
+        pts = history.load_velocity_points(DB_PATH, lift=lift_f, lifter=lf)
+        prof = lvmod.fit_profile(pts)
+        lv_fig, lv_html = _lv_chart(pts, prof, lift_f), _lv_readout(prof, lift_f, len(pts))
+    else:
+        lv_fig = _lv_chart([], None, None)
+        lv_html = ("<div class='fl-hint'>Pick a single lift (squat or deadlift) above to see its "
+                   "load-velocity profile.</div>")
+    return table, fig, bests, lv_fig, lv_html
 
 
 def on_history_open(metric: str, lift: str, name: str):
     """Tab-open: focus History on the CURRENT lifter (the name from the Analyse tab), not everyone.
     The dropdown still lets them switch; this just defaults to whoever just analysed."""
     name = (name or "").strip()
-    table, fig, bests = load_history(metric, lift, name)
-    return gr.update(value=name, choices=[""] + history.lifters(DB_PATH)), table, fig, bests
+    table, fig, bests, lv_fig, lv_html = load_history(metric, lift, name)
+    return (gr.update(value=name, choices=[""] + history.lifters(DB_PATH)),
+            table, fig, bests, lv_fig, lv_html)
 
 
 # ---------------------------------------------------------------- UI
@@ -914,6 +992,9 @@ with gr.Blocks(title="Form Lab") as demo:
             headers=["date", "lifter", "lift", "weight", "score", "e1RM", "mean vel"],
             label="Past runs", elem_classes="fl-narrow")
         trend_out = gr.Plot(label="Trend")
+        gr.HTML("<div class='fl-sec'>LOAD-VELOCITY — what weight today?</div>")
+        lv_readout = gr.HTML(elem_classes="fl-narrow")
+        lv_chart = gr.Plot(label="Load-velocity profile", show_label=False, elem_classes="fl-narrow")
     with gr.Tab("Leaderboard") as board_tab:
         gr.Markdown("🏆 **Leaderboard** — each lifter's best validated lift. "
                     "**Score** = how well you lifted (/100) · **Weight** = how much. "
@@ -945,12 +1026,12 @@ with gr.Blocks(title="Form Lab") as demo:
                     show_progress_on=[share_video])
     webshare_btn.click(None, None, None, js=WEBSHARE_JS)   # pure client-side Web Share API call
     _hist_in = [metric_in, hist_lift, hist_lifter]
-    _hist_out = [hist_table, trend_out, bests_out]
+    _hist_out = [hist_table, trend_out, bests_out, lv_chart, lv_readout]
     for _c in (metric_in, hist_lift, hist_lifter):
         _c.change(load_history, _hist_in, _hist_out)
     refresh_btn.click(load_history, _hist_in, _hist_out)
     history_tab.select(on_history_open, [metric_in, hist_lift, name_in],
-                       [hist_lifter, hist_table, trend_out, bests_out])
+                       [hist_lifter, hist_table, trend_out, bests_out, lv_chart, lv_readout])
     board_tab.select(load_board, [board_by, board_lift], board_out)
     board_refresh.click(load_board, [board_by, board_lift], board_out)
     board_by.change(load_board, [board_by, board_lift], board_out)

@@ -145,6 +145,25 @@ def trend(db_path: str, metric: str, lift: str | None = None,
         return [(row["created_at"], row[metric]) for row in conn.execute(sql, params).fetchall()]
 
 
+def load_velocity_points(db_path: str, lift: str | None = None,
+                         lifter: str | None = None) -> list[tuple]:
+    """(load_kg, mean_velocity) pairs for the load-velocity profile — runs that logged BOTH a bar load
+    and a mean concentric velocity. Optionally filtered by lift and/or lifter."""
+    init_db(db_path)
+    sql = ("SELECT bar_load_kg, mean_velocity FROM runs "
+           "WHERE bar_load_kg IS NOT NULL AND mean_velocity IS NOT NULL AND bar_load_kg > 0")
+    params: list = []
+    if lift:
+        sql += " AND lift = ?"
+        params.append(lift)
+    if lifter:
+        sql += " AND lifter_name = ? COLLATE NOCASE"
+        params.append(lifter)
+    with _connect(db_path) as conn:
+        return [(row["bar_load_kg"], row["mean_velocity"])
+                for row in conn.execute(sql, params).fetchall()]
+
+
 def leaderboard(db_path: str, by: str = "score", lift: str | None = None,
                 limit: int = 100) -> list[dict]:
     """Ranked best-per-lifter board over VALIDATED lifts only.
