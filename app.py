@@ -69,10 +69,10 @@ SEED_INSTR = "**Tap the centre** of the plate, then **tap its edge** to set the 
 SEED_INSTR_EDGE = "Centre set - now **tap the edge** of the plate to size the circle."
 SEED_INSTR_DONE = "Plate set. Tap the **centre** again to redo, or press **Analyse**."
 
-# Athletic-blue, system-font theme; follows the device's light/dark setting automatically.
+# Black-glass, faint-purple theme (the dark palette + glass surfaces are layered in CSS below).
 THEME = gr.themes.Soft(
-    primary_hue="blue",
-    secondary_hue="blue",
+    primary_hue="purple",
+    secondary_hue="purple",
     neutral_hue="slate",
     radius_size=gr.themes.sizes.radius_lg,
     font=["-apple-system", "BlinkMacSystemFont", "SF Pro Text", "Segoe UI", "Roboto", "sans-serif"],
@@ -145,6 +145,58 @@ footer {display: none !important;}
   .fl-value {font-size: 22px;}
   .fl-narrow .table-wrap {overflow-x: auto;}
   .fl-score-num {font-size: 36px;}
+}
+
+/* ===== Black-glass + faint-purple theme (mobile-first, easy on the eyes) ===== */
+:root, .gradio-container, .gradio-container.dark, .dark {
+  --body-background-fill: #0a0a0f;
+  --background-fill-primary: rgba(255,255,255,.04);
+  --background-fill-secondary: rgba(255,255,255,.06);
+  --block-background-fill: rgba(255,255,255,.045);
+  --block-border-color: rgba(150,130,255,.14);
+  --border-color-primary: rgba(150,130,255,.16);
+  --body-text-color: rgba(237,235,247,.92);
+  --body-text-color-subdued: rgba(198,194,218,.58);
+  --block-label-text-color: rgba(198,194,218,.72);
+  --input-background-fill: rgba(255,255,255,.05);
+  --neutral-950: #0a0a0f; --neutral-900: #0d0d14;
+}
+body, .gradio-container {
+  background: radial-gradient(1100px 560px at 50% -10%, rgba(124,92,255,.12), transparent 62%), #0a0a0f !important;
+  color: var(--body-text-color);
+}
+.gradio-container {max-width: 680px !important;}   /* focused, phone-shaped even on desktop */
+/* glass surfaces */
+.fl-card, .fl-score, .fl-coach, .fl-verdict, .lb-row, .block {
+  background: rgba(255,255,255,.045) !important;
+  border: 1px solid rgba(150,130,255,.14) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(1.25);
+  backdrop-filter: blur(16px) saturate(1.25);
+}
+/* sections: airy, quiet labels */
+.fl-sec {margin: 24px 0 8px !important; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
+         color: rgba(198,194,218,.5) !important;}
+.fl-value, .fl-score-num {color: #f3f1fb !important;}   /* crisp but not harsh white */
+/* purple accents (replacing the old blue) */
+.fl-grade {background: rgba(124,92,255,.2) !important; color: #c9bdff !important;}
+.fl-bar i {background: rgba(124,92,255,.16) !important;}
+.fl-bar i b {background: #a78bfa !important;}
+.fl-coach {border-left: 3px solid #a78bfa !important;}
+.lb-grade {color: #c9bdff !important;}
+.lb-rank1 {border-color: rgba(124,92,255,.45) !important;
+           background: linear-gradient(0deg, rgba(124,92,255,.12), transparent) !important;}
+/* verdict colours — brighter on dark */
+.fl-ok {background: rgba(52,211,153,.14) !important; color: #6ee7b7 !important;}
+.fl-warn {background: rgba(245,158,11,.16) !important; color: #fcd34d !important;}
+.fl-bad {background: rgba(248,113,113,.15) !important; color: #fca5a5 !important;}
+/* primary button in purple */
+button.primary, .gr-button-primary, .primary {
+  background: linear-gradient(180deg, #8b6cff, #6f4dff) !important;
+  border: 1px solid rgba(150,130,255,.45) !important; color: #fff !important;}
+/* generous mobile spacing */
+@media (max-width: 600px) {
+  .fl-card, .fl-score, .fl-coach, .fl-verdict {padding: 16px 18px !important;}
+  .fl-sec {margin: 20px 0 7px !important;}
 }
 """
 
