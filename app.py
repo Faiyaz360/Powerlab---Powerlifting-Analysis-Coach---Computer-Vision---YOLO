@@ -81,6 +81,7 @@ THEME = gr.themes.Soft(
 # Apple-clean polish: a responsive stat-card grid, a semantic verdict banner, centred video.
 CSS = """
 footer {display: none !important;}
+#fl-gstyle {display: none !important;}   /* the <style>-only injector block — keep it invisible */
 .gradio-container {max-width: 920px !important; margin: 0 auto !important; min-height: 100vh;}
 .fl-grid {display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px;}
 .fl-card {background: var(--block-background-fill); border: 1px solid var(--border-color-primary);
@@ -252,16 +253,21 @@ video {max-width: 100% !important;}
 # <gradio-app> and .gradio-container. Mobile fix: the container is a flex item with min-width:auto,
 # so it won't shrink below its content (469px) -> horizontal overflow on phones. Neutralise the flex
 # parent and let the container + every child shrink to the viewport.
-HEAD = """
-<style>
+GLOBAL_STYLE = """<style>
+/* Reaches the page ROOT (html/body/gradio-app/.gradio-container) which Gradio's scoped css= cannot.
+   Delivered via a gr.HTML(<style>) component so it lands in the DOM UNSCOPED and renders on Spaces
+   (launch(head=) does not apply on HF Spaces). Belt: clamp media + hard-clip any residual overflow. */
+img, video, canvas { max-width: 100% !important; height: auto !important; }
+html, body { overflow-x: hidden !important; max-width: 100vw !important; }
+gradio-app, gradio-app .gradio-container { max-width: 100vw !important; overflow-x: hidden !important; }
 @media (max-width: 600px) {
   gradio-app { display: block !important; }
-  gradio-app .gradio-container { min-width: 0 !important; width: 100% !important; max-width: 100vw !important;
+  gradio-app .gradio-container { min-width: 0 !important; width: 100% !important;
                                  padding-left: 10px !important; padding-right: 10px !important; }
   gradio-app .gradio-container * { min-width: 0 !important; }
-  html, body { overflow-x: hidden !important; max-width: 100vw !important; }
 }
 </style>"""
+HEAD = GLOBAL_STYLE   # also passed to launch(head=) for local dev (ignored on Spaces)
 
 
 # ---------------------------------------------------------------- metric helpers
@@ -776,6 +782,7 @@ def on_history_open(metric: str, lift: str, name: str):
 # ---------------------------------------------------------------- UI
 
 with gr.Blocks(title="Form Lab") as demo:
+    gr.HTML(GLOBAL_STYLE, elem_id="fl-gstyle")   # unscoped global CSS — reaches the page root on Spaces
     gr.Markdown("# Form Lab")
     with gr.Tab("Analyse"):
         # --- inputs: one clean centred column (mobile-first; scales to desktop) ---
