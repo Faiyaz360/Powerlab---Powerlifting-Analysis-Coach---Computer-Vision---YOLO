@@ -21,6 +21,19 @@ def test_speed_color_clamps_out_of_range():
     assert render._speed_color(2.0) == (0, 255, 0)
 
 
+def test_start_anchor_uses_first_rep_not_video_start():
+    """The 'start' reference lines anchor to the first rep (squat = first lockout/top, deadlift =
+    first floor/bottom), not the walkout at the video start — so a squat's centre line isn't pinned
+    to the rack. No reps -> fall back to the first tracked frame."""
+    bar_xy = np.full((50, 2), 100.0)
+    bar_xy[0:5, 0] = 300.0                                   # walkout: video-start X is off at the rack
+    reps = [{"bottom": 20, "top": 30}]
+    valid = np.arange(50)
+    assert render._start_anchor_frame(bar_xy, reps, "squat", valid) == 30      # squat -> first lockout
+    assert render._start_anchor_frame(bar_xy, reps, "deadlift", valid) == 20   # deadlift -> first floor
+    assert render._start_anchor_frame(bar_xy, [], "squat", valid) == 0         # no reps -> video start
+
+
 def test_velocity_graph_draws_rep_fill_and_start_line():
     """The bottom velocity graph renders a green concentric-rep fill and a red dotted 'rep start'
     vertical without error, and actually marks the frame (green fill + red pixels appear)."""

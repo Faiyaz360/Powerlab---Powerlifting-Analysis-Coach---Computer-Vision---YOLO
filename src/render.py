@@ -57,6 +57,19 @@ def _xy_ok(lm, f, idx, region):
     return p if np.hypot(p[0] - center[0], p[1] - center[1]) <= maxd else None
 
 
+def _start_anchor_frame(bar_xy, bar_reps, lift, valid):
+    """Frame the 'start' reference lines (amber height + white centre) anchor to: the FIRST REP, not
+    the video start. The bar at the very first tracked frame is mid-walkout/setup — a squat walks
+    back from the rack, so the centre line would sit at the rack and read fake sideways drift. Squat
+    home = the first lockout (standing); deadlift home = the first floor position (liftoff). Falls
+    back to the first tracked frame when there are no reps. Pure — unit-tested."""
+    if bar_reps:
+        a = int(bar_reps[0]["bottom"] if lift == "deadlift" else bar_reps[0]["top"])
+        if 0 <= a < len(bar_xy) and not np.any(np.isnan(bar_xy[a])):
+            return a
+    return int(valid[0])
+
+
 def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     """Write an annotated mp4 to ``out_path``."""
     lm = pose.landmarks
@@ -87,8 +100,9 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     if bar_xy is not None:
         valid = np.where(~np.isnan(bar_xy[:, 1]))[0]
         if len(valid):
-            start_y = float(bar_xy[valid[0], 1])     # where the bar began = the start line
-            start_x = float(bar_xy[valid[0], 0])     # bar's start X = the vertical 'centre' line
+            f0 = _start_anchor_frame(bar_xy, bar_reps, lift_name, valid)  # first rep, not video start
+            start_y = float(bar_xy[f0, 1])           # bar's height at rep 1 = the 'start' line
+            start_x = float(bar_xy[f0, 0])           # bar's X at rep 1 = the vertical 'centre' line
     rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
     # Real-time bar-path panel (top-right): 2D trajectory, concentric (up) green / eccentric (down) blue.
     path_panel_pts = path_runs = path_panel_box = None
