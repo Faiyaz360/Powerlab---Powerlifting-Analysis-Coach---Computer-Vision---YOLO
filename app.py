@@ -192,10 +192,10 @@ body, .gradio-container {
   background: rgba(255,255,255,.03) !important;
   border: 1px solid rgba(255,255,255,.07) !important;
   border-radius: 16px !important;
-  -webkit-backdrop-filter: blur(18px) saturate(1.1);
-  backdrop-filter: blur(18px) saturate(1.1);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
 }
+/* (backdrop-filter removed — it triggers a horizontal-overflow bug in iOS Safari and was invisible
+   on a near-black background anyway) */
 /* section headers are plain text, NOT cards (removes the big empty boxes) */
 .block:has(.fl-sec), .block:has(> .fl-cap) {
   background: transparent !important; border: none !important; box-shadow: none !important;
@@ -258,8 +258,8 @@ GLOBAL_STYLE = """<style>
    Delivered via a gr.HTML(<style>) component so it lands in the DOM UNSCOPED and renders on Spaces
    (launch(head=) does not apply on HF Spaces). Belt: clamp media + hard-clip any residual overflow. */
 img, video, canvas { max-width: 100% !important; height: auto !important; }
-html, body { overflow-x: hidden !important; max-width: 100vw !important; }
-gradio-app, gradio-app .gradio-container { max-width: 100vw !important; overflow-x: hidden !important; }
+html, body { overflow-x: hidden !important; max-width: 100% !important; }
+gradio-app, gradio-app .gradio-container { max-width: 100% !important; overflow-x: hidden !important; }
 @media (max-width: 600px) {
   gradio-app { display: block !important; }
   gradio-app .gradio-container { min-width: 0 !important; width: 100% !important;
