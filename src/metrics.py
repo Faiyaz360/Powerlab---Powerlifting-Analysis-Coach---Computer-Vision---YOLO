@@ -28,10 +28,14 @@ MIN_SQUAT_RANGE = 40.0        # knee angle must swing at least this much for a r
 # --- deadlift tuning ---
 DL_STAND_HIP = 150.0          # hip angle above this = standing-ish (between reps)
 DL_BOTTOM_HIP = 120.0         # a pull's bottom must hinge below this to count
-# Lockout judged against IPF 2026 §4.3.1: knees locked straight (#3) AND hips through /
-# shoulders back (#2, "standing erect"). Hip extension uses an adaptive check (self-calibrates
-# to camera angle); the knee-lock uses an absolute angle (the rule is literally "knees straight").
-LOCKOUT_TOL = 8.0             # hip/knee within this many deg of the lifter's best lockout = locked
+# Lockout per IPF 2026 §4.3.1: stand erect (#2 — the front deltoid ends up behind the bar's vertical
+# projection; we proxy "erect" by the TORSO being ~vertical at the top, i.e. the shoulder lined up
+# over the hip) AND knees locked straight (#3). Torso lean from vertical has an absolute, camera-
+# robust scale (0 = upright), so both use absolute thresholds — measured lockouts read ~4-6° lean /
+# ~162-171° knee on the eval clip. (The exact "delt behind the BAR" check, using the tracked plate x
+# + the lifter's facing, is a later refinement.)
+ERECT_LEAN_MAX = 15.0         # torso tilt from vertical at the top <= this = standing erect
+KNEE_LOCK_MIN = 150.0         # knee angle at the top >= this = knees locked straight (lenient floor)
 HIP_RISE_FRAC = 0.33          # fraction of the ascent counted as "early pull"
 # rep-sanity filters (drop detector artifacts)
 MIN_REP_S = 0.8               # reps shorter than this are noise blips
@@ -221,6 +225,15 @@ def _is_spurious_squat(end, bottom, ascent_s, descent_s, duration_s, knee_range)
 
 # ---------------------------------------------------------------- deadlift
 
+def _deadlift_lockout(top_lean: float, top_knee: float):
+    """IPF 2026 deadlift lockout from the top-of-rep geometry: standing erect (torso ~vertical = the
+    shoulder lined up over the hip) AND knees locked straight. Returns (hips_locked, knees_locked,
+    lockout_pass). Pure — unit-tested."""
+    hips_locked = bool(top_lean <= ERECT_LEAN_MAX)   # §4.3.1.2 stand erect / shoulders back
+    knees_locked = bool(top_knee >= KNEE_LOCK_MIN)   # §4.3.1.3 knees straight
+    return hips_locked, knees_locked, (hips_locked and knees_locked)
+
+
 def analyze_deadlift(pose: P.PoseResult) -> dict:
     s = compute_series(pose)
     candidates = detect_reps(s["hip"], DL_STAND_HIP, DL_BOTTOM_HIP)
@@ -246,25 +259,16 @@ def analyze_deadlift(pose: P.PoseResult) -> dict:
         if _is_spurious_rep(top, bottom, ascent_s, duration_s, amplitude):
             continue
         kept.append({"start": start, "bottom": bottom, "top": top, "top_hip": top_hip,
-                     "top_knee": float(s["knee"][top])})
+                     "top_knee": float(s["knee"][top]), "top_lean": float(s["lean"][top])})
 
-    # Calibrate lockout against the BEST lockout actually reached in the reps (not casual
-    # pre-lift standing, which reads ~180 and would make every loaded rep look incomplete).
-    # Both hip (standing erect) and knee (straight) are judged relative to the lifter's own best,
-    # which self-calibrates to camera/geometry (a fixed knee angle was too strict — real lockouts
-    # measured ~158-164deg here).
-    best_lockout = max((k["top_hip"] for k in kept), default=float("nan"))
-    best_knee = max((k["top_knee"] for k in kept), default=float("nan"))
-
-    # Pass 2: build metrics. Each rep effectively ends at its lockout frame (top).
+    # Pass 2: build metrics. Each rep effectively ends at its lockout frame (top). Lockout is judged
+    # by standing erect (torso vertical = shoulder over the hip) + knees straight (see _deadlift_lockout).
     kept_reps = []
     rep_metrics = []
     for k in kept:
         start, bottom, top, top_hip = k["start"], k["bottom"], k["top"], k["top_hip"]
-        top_knee = k["top_knee"]
-        hips_locked = bool(top_hip >= best_lockout - LOCKOUT_TOL)  # IPF §4.3.1.2 standing erect
-        knees_locked = bool(top_knee >= best_knee - LOCKOUT_TOL)   # IPF §4.3.1.3 knees straight
-        lockout_pass = hips_locked and knees_locked
+        top_knee, top_lean = k["top_knee"], k["top_lean"]
+        hips_locked, knees_locked, lockout_pass = _deadlift_lockout(top_lean, top_knee)
         hip_rise_ratio = _hip_rise_ratio(s, bottom, top)
         kept_reps.append({"start": start, "bottom": bottom, "end": top})
         rep_metrics.append(
@@ -274,6 +278,7 @@ def analyze_deadlift(pose: P.PoseResult) -> dict:
                 "top_s": round(top / fps, 2),
                 "lockout_hip_angle": round(top_hip, 1),
                 "lockout_knee_angle": round(top_knee, 1),
+                "torso_lean_deg": round(top_lean, 1),
                 "hips_locked": hips_locked,
                 "knees_locked": knees_locked,
                 "lockout_pass": lockout_pass,

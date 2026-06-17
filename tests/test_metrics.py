@@ -1,10 +1,19 @@
 """Unit tests for rep detection (pure function, deterministic — no video needed)."""
 import numpy as np
 
-from src.metrics import detect_reps
+from src.metrics import _deadlift_lockout, detect_reps
 
 STAND = 160.0
 BOTTOM = 140.0
+
+
+def test_deadlift_lockout_needs_erect_torso_and_locked_knees():
+    # erect (small torso lean = shoulder over hip) + knees straight -> locked out
+    assert _deadlift_lockout(top_lean=5.0, top_knee=168.0) == (True, True, True)
+    # still leaning forward at the top (hips not through) -> not erect -> no lockout
+    assert _deadlift_lockout(top_lean=25.0, top_knee=168.0)[2] is False
+    # erect but the knee is clearly bent (soft lockout) -> no lockout
+    assert _deadlift_lockout(top_lean=5.0, top_knee=140.0)[2] is False
 
 
 def test_single_rep_found_with_correct_bottom():

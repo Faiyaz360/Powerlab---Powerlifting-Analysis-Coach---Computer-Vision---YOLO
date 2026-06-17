@@ -128,13 +128,13 @@ def _verdict_section(faults) -> list:
 
 def _rep_table(analysis):
     if analysis["lift"] == "deadlift":
-        rows = ["| Rep | Hip° | Knee° | Lockout | Hip-rise | Ascent s |",
-                "|-----|------|-------|---------|----------|----------|"]
+        rows = ["| Rep | Lean° | Knee° | Lockout | Hip-rise | Ascent s |",
+                "|-----|-------|-------|---------|----------|----------|"]
         for i, r in enumerate(analysis["rep_metrics"], 1):
             lock = "OK" if r["lockout_pass"] else "INCOMPLETE"
             ratio = "-" if r["hip_rise_ratio"] is None else r["hip_rise_ratio"]
             rows.append(
-                f"| {i} | {r['lockout_hip_angle']} | {r['lockout_knee_angle']} | {lock} | "
+                f"| {i} | {r['torso_lean_deg']} | {r['lockout_knee_angle']} | {lock} | "
                 f"{ratio} | {r['ascent_s']} |"
             )
         return rows
