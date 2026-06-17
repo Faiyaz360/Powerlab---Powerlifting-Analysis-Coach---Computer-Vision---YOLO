@@ -25,25 +25,35 @@ def _cell(x):
     return f"{x:.2f}" if isinstance(x, float) else str(x)
 
 
-def velocity_table_img(bar_velocity, width_px: int = 480):
-    """Compact per-rep table (Rep | Con | Vel | Peak | Ecc) as a dark BGR image for the on-video
-    overlay (bottom strip). None if no data."""
-    rows = [[str(i), _cell(v.get("concentric_s")), _cell(v.get("mean_velocity_ms")),
-             _cell(v.get("peak_velocity_ms")), _cell(v.get("eccentric_s"))]
-            for i, v in enumerate(bar_velocity or [], start=1) if v]
+def velocity_table_img(bar_velocity, width_px: int = 480, made=None):
+    """Compact per-rep table (Rep | Con | Vel | Peak | Ecc | OK) as a dark BGR image for the on-video
+    overlay. ``made`` = per-rep depth/lockout pass flags -> the OK ✓/✗ column. None if no data."""
+    rows, oks, ri = [], [], 0
+    for i, v in enumerate(bar_velocity or [], start=1):
+        if not v:
+            continue
+        ok = made[ri] if (made is not None and ri < len(made)) else None
+        rows.append([str(i), _cell(v.get("concentric_s")), _cell(v.get("mean_velocity_ms")),
+                     _cell(v.get("peak_velocity_ms")), _cell(v.get("eccentric_s")),
+                     "✓" if ok else ("✗" if ok is False else "-")])
+        oks.append(ok)
+        ri += 1
     if not rows:
         return None
-    fig, ax = plt.subplots(figsize=(4.8, 0.26 * (len(rows) + 1)), dpi=100)
+    fig, ax = plt.subplots(figsize=(5.0, 0.26 * (len(rows) + 1)), dpi=100)
     fig.patch.set_facecolor("#16181d")
     ax.axis("off")
-    tbl = ax.table(cellText=rows, colLabels=["Rep", "Con s", "Vel", "Peak", "Ecc"],
+    tbl = ax.table(cellText=rows, colLabels=["Rep", "Con s", "Vel", "Peak", "Ecc", "OK"],
                    loc="center", cellLoc="center")
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(8)
-    for (r, _c), cell in tbl.get_celld().items():
+    for (r, c), cell in tbl.get_celld().items():
         cell.set_edgecolor("#333333")
         cell.set_facecolor("#1e2128" if r == 0 else "#16181d")
-        cell.set_text_props(color="#ffffff" if r == 0 else "#cfcfcf")
+        col = "#ffffff" if r == 0 else "#cfcfcf"
+        if r > 0 and c == 5:                       # OK column: green tick / red cross
+            col = "#5ed47a" if oks[r - 1] else ("#e06a6a" if oks[r - 1] is False else "#cfcfcf")
+        cell.set_text_props(color=col)
     fig.tight_layout(pad=0.15)
     img = _fig_to_bgr(fig)
     h0, w0 = img.shape[:2]

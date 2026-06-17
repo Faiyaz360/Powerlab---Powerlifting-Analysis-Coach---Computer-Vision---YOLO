@@ -341,7 +341,9 @@ def velocity_per_rep(bar_xy, reps, fps, scale, lift="squat"):
             out.append(None)
             continue
         c0 = valley + int(np.where(seg_y >= yfloor - 0.1 * rom)[0][-1])
-        c1 = top                                    # lockout peak (clean, from find_peaks)
+        # rep ENDS at the FIRST moment the bar reaches the top (lockout), not the find_peaks peak —
+        # so standing/resting at the top between reps isn't counted into the concentric.
+        c1 = valley + int(np.where(seg_y <= ytop + 0.1 * rom)[0][0])
         if c1 <= c0:
             out.append(None)
             continue

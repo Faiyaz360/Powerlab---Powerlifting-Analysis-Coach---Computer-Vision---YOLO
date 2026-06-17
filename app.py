@@ -151,12 +151,15 @@ def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
     """Strength-tier scores; None until bodyweight + bar load are supplied."""
     if not bodyweight_kg or not bar_load_kg:
         return None
-    mcv, peak = _first_velocity(a)
+    _, peak = _first_velocity(a)
+    bv = [v for v in (a.get("bar_velocity") or []) if v]
+    reps = len(bv)
+    last_mcv = bv[-1].get("mean_velocity_ms") if bv else None
     return {
         "dots": am.dots(bar_load_kg, bodyweight_kg, sex),
-        "e1rm": am.est_1rm(bar_load_kg, mcv, a["lift"]),
+        "e1rm": am.est_1rm(bar_load_kg, reps, last_mcv, a["lift"]),
         "power": am.peak_power_w(bar_load_kg, peak),
-        "rpe": am.velocity_to_rpe(mcv, a["lift"]),
+        "rpe": am.velocity_to_rpe(last_mcv, a["lift"]),
     }
 
 
@@ -225,14 +228,16 @@ def _strength_html(s) -> str:
                 "strength scores.</div>")
     e = s["e1rm"]
     e1_val = e["e1rm_kg"] if e else None
-    e1_unit = f"kg · {e['confidence']}" if e else ""
     cards = [
         _card("DOTS", s["dots"]),
-        _card("Est. 1RM", e1_val, e1_unit),
+        _card("Est. 1RM", e1_val, f"kg · {e['confidence']}" if e else "kg"),
         _card("Peak power", s["power"], "W"),
         _card("Est. RPE", s["rpe"]),
     ]
-    return f"<div class='fl-grid'>{''.join(cards)}</div>"
+    hint = ("<div class='fl-hint'>Est. 1RM = your reps + how close the last rep was to failure "
+            "(from its bar speed). Most accurate when you take the set near failure; it can't see "
+            "reps you didn't do.</div>")
+    return f"<div class='fl-grid'>{''.join(cards)}</div>{hint}"
 
 
 def _summary_record(a, result, adv, name, c=None, s=None,

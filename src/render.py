@@ -8,6 +8,7 @@ from __future__ import annotations
 import cv2
 import numpy as np
 
+from . import advanced_metrics as am
 from . import angles
 from . import charts
 from . import pose as P
@@ -116,7 +117,8 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         path_panel_box = (bx0, by0, bx0 + pw, by0 + ph, cxp, ytop, ybot)
 
     # Bottom overlays: the per-rep table (lowest strip) with the velocity graph just above it.
-    table_img = charts.velocity_table_img(bar_velocity, int(pose.width * 0.92))
+    made_flags = [rm.get("depth_pass", rm.get("lockout_pass")) for rm in rep_metrics]  # ✓/✗ per rep
+    table_img = charts.velocity_table_img(bar_velocity, int(pose.width * 0.92), made_flags)
     table_xy = None
     bottom = int(pose.height * 0.975)
     if table_img is not None:
@@ -250,14 +252,12 @@ def _draw_side_skeleton(frame, lm, f, side, region):
 
 
 def _draw_joint_angles(frame, lm, f, side, region):
-    """Live joint-angle numbers at the camera-side knee, hip and elbow (LIFT-APP style). Computed
-    per frame from the landmarks; occluded/degenerate joints are skipped."""
+    """Live joint-angle numbers at the camera-side KNEE and HIP — the joints that matter for squat
+    depth and deadlift hinge. Computed per frame from the landmarks; occluded joints are skipped."""
     if side == "left":
-        joints = [(P.L_HIP, P.L_KNEE, P.L_ANKLE), (P.L_SHOULDER, P.L_HIP, P.L_KNEE),
-                  (P.L_SHOULDER, P.L_ELBOW, P.L_WRIST)]
+        joints = [(P.L_HIP, P.L_KNEE, P.L_ANKLE), (P.L_SHOULDER, P.L_HIP, P.L_KNEE)]
     else:
-        joints = [(P.R_HIP, P.R_KNEE, P.R_ANKLE), (P.R_SHOULDER, P.R_HIP, P.R_KNEE),
-                  (P.R_SHOULDER, P.R_ELBOW, P.R_WRIST)]
+        joints = [(P.R_HIP, P.R_KNEE, P.R_ANKLE), (P.R_SHOULDER, P.R_HIP, P.R_KNEE)]
     s = max(0.5, frame.shape[1] / 1300.0)
     for a, b, c in joints:
         pa, pb, pc = _xy_ok(lm, f, a, region), _xy_ok(lm, f, b, region), _xy_ok(lm, f, c, region)
@@ -353,6 +353,9 @@ def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
         rows.append((f"{speed_ms:.2f} m/s  now", 0.8 * s, WHITE))
     if mean_ms is not None:
         rows.append((f"{mean_ms:.2f} m/s  mean", 0.8 * s, WHITE))
+        rpe = am.velocity_to_rpe(mean_ms, lift)
+        if rpe is not None:
+            rows.append((f"RPE ~{rpe:.1f}", 0.8 * s, (120, 220, 120)))
     thick = max(1, int(2 * s))
     pad, rh = int(16 * s), int(40 * s)
     widths = [cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, fs, thick)[0][0] for t, fs, _ in rows]
@@ -432,9 +435,18 @@ def _draw_path_panel(frame, pts, runs, box, f):
 
 
 def _draw_badge(frame, f, rep_metrics, window):
+    """When a rep hits depth (squat) / lockout (deadlift), flash a bold centred badge — green with a
+    tick when made, red when not."""
     for rm in rep_metrics:
         if abs(f - rm["badge_frame"]) <= window:
             text, ok = rm["badge"]
+            label = text.replace(" OK", "") if ok else text   # cv2 can't draw unicode ticks
             color = GREEN if ok else RED
-            cv2.putText(frame, text, (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 1.1, color, 2)
+            s = max(0.9, frame.shape[1] / 700.0)
+            thick = max(2, int(3 * s))
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.2 * s, thick)
+            x = (frame.shape[1] - tw) // 2
+            y = int(frame.shape[0] * 0.46)
+            cv2.rectangle(frame, (x - 14, y - th - 14), (x + tw + 14, y + 14), (20, 20, 24), -1)
+            cv2.putText(frame, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.2 * s, color, thick, cv2.LINE_AA)
             return

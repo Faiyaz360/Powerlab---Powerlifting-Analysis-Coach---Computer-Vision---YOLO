@@ -108,21 +108,23 @@ def dots(load_kg: float, bodyweight_kg: float, sex: str = "male") -> float | Non
 
 
 # generalized load-velocity %1RM model: pct = c + m*MCV   (CALIBRATABLE per lifter)
-_LV_MODEL = {"squat": (125.7, -85.7), "deadlift": (117.4, -96.8)}
-_E1RM_CONFIDENCE = {"squat": "medium", "deadlift": "low"}
+def est_1rm(load_kg, reps, last_mcv, lift) -> dict | None:
+    """Estimate 1RM from the SET: the rep count plus how close the LAST rep was to failure (its bar
+    speed -> RPE -> reps in reserve), via Epley on the projected reps-to-failure. Suits a normal
+    training set far better than reading a single rep's velocity off a fixed load-velocity curve.
 
-
-def est_1rm(load_kg: float, mcv: float | None, lift: str) -> dict | None:
-    """Estimated 1RM from a single set's mean concentric velocity. Generalized — calibratable.
-
-    Deadlift is flagged 'low' confidence (individual minimum-velocity-threshold variance is high).
+    e.g. 120 kg x 7 with a last rep at RPE 8 -> 2 in reserve -> 9 reps to failure -> ~156 kg.
     """
-    if not load_kg or mcv is None or lift not in _LV_MODEL:
+    if not load_kg or not reps or last_mcv is None or lift not in _RPE_TABLE:
         return None
-    c, m = _LV_MODEL[lift]
-    pct = max(40.0, min(100.0, c + m * mcv))
-    return {"e1rm_kg": round(load_kg / (pct / 100.0), 1),
-            "confidence": _E1RM_CONFIDENCE[lift]}
+    rpe = velocity_to_rpe(last_mcv, lift)
+    if rpe is None:
+        return None
+    rir = max(0.0, 10.0 - rpe)                        # reps left in reserve on the last rep
+    reps_to_failure = reps + rir
+    e1rm = load_kg * (1.0 + reps_to_failure / 30.0)   # Epley
+    conf = "good" if rir <= 1 else ("medium" if rir <= 3 else "low")
+    return {"e1rm_kg": round(e1rm, 1), "confidence": conf, "rpe": round(rpe, 1)}
 
 
 def peak_power_w(load_kg: float, peak_velocity: float | None) -> float | None:

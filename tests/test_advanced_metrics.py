@@ -75,19 +75,27 @@ def test_dots_none_without_weights():
     assert am.dots(0, 100.0) is None
 
 
-def test_est_1rm_squat_medium_confidence():
-    out = am.est_1rm(140.0, 0.5, "squat")
-    assert round(out["e1rm_kg"]) == 169
+def test_est_1rm_uses_reps_and_last_rep_rpe():
+    # 120 kg x 7, last rep 0.30 m/s -> RPE 8 -> 2 in reserve -> 9 reps to failure -> Epley.
+    out = am.est_1rm(120.0, 7, 0.30, "squat")
+    assert round(out["e1rm_kg"]) == 156   # 120 * (1 + 9/30)
+    assert out["rpe"] == 8.0
     assert out["confidence"] == "medium"
 
 
-def test_est_1rm_deadlift_flagged_low():
-    out = am.est_1rm(200.0, 0.3, "deadlift")
-    assert out["confidence"] == "low"
+def test_est_1rm_good_confidence_near_failure():
+    # last rep 0.20 m/s -> RPE 10 -> 0 in reserve -> high confidence.
+    assert am.est_1rm(140.0, 5, 0.20, "squat")["confidence"] == "good"
 
 
-def test_est_1rm_none_without_velocity():
-    assert am.est_1rm(140.0, None, "squat") is None
+def test_est_1rm_low_confidence_fast_last_rep():
+    # last rep 0.50 m/s -> RPE 6 -> 4 in reserve -> low confidence (extrapolating far).
+    assert am.est_1rm(100.0, 3, 0.50, "squat")["confidence"] == "low"
+
+
+def test_est_1rm_none_without_velocity_or_reps():
+    assert am.est_1rm(140.0, 5, None, "squat") is None
+    assert am.est_1rm(140.0, 0, 0.3, "squat") is None
 
 
 def test_peak_power():
