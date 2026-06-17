@@ -47,7 +47,7 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["bar_xy"] = bar_xy
     analysis["scale_m_per_px"] = scale
     analysis["bar_reps"] = bar_reps
-    analysis["bar_velocity"] = barmod.velocity_per_rep(bar_xy, bar_reps, pose.fps, scale)
+    analysis["bar_velocity"] = barmod.velocity_per_rep(bar_xy, bar_reps, pose.fps, scale, lift)
     analysis["bar_velocity_series"] = barmod.velocity_series(bar_xy, pose.fps, scale)  # per-frame trace
     analysis["skeleton"] = skeleton   # "side" camera-side joints / "full" all joints / "off" bar-path only
     analysis["bar_load"] = bar_load   # kg, for the on-video HUD (None if not entered)

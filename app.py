@@ -302,9 +302,11 @@ def on_upload(video_path):
     frame = _first_frame_rgb(safe)
     dur = round(media.duration_s(safe), 1) or 1.0
     h, w = (frame.shape[0], frame.shape[1]) if frame is not None else (480, 640)
-    cx, cy, r = w // 2, h // 2, round(h * 0.12)
+    cx, cy, r, detected = _auto_or_default(frame, h, w)   # auto-detect the plate on upload
+    instr = ("Auto-detected the plate ✓ — check it's on the plate (tap to fix), then **Analyse**."
+             if detected else SEED_INSTR)
     # ...seed_instr, source_state, trim_start, trim_end, cx, cy, radius, tap_state
-    return (safe, _reticle_view(frame, cx, cy, r), frame, SEED_INSTR, safe,
+    return (safe, _reticle_view(frame, cx, cy, r), frame, instr, safe,
             gr.update(maximum=dur, value=0.0), gr.update(maximum=dur, value=dur),
             gr.update(maximum=w, value=cx), gr.update(maximum=h, value=cy),
             gr.update(maximum=max(20, h // 2), value=r), 0)
@@ -338,23 +340,33 @@ def on_tap(frame0, cx, cy, r, tap_state, evt: gr.SelectData):
     return _reticle_view(frame0, cx, cy, r), cx, cy, r, nxt, instr
 
 
+def _auto_or_default(frame, h, w):
+    """Auto-detect the plate (largest round, saturated blob); fall back to a centred circle.
+    ``frame`` is RGB. Returns (cx, cy, r, detected)."""
+    cx, cy, r = w // 2, h // 2, round(h * 0.12)
+    if frame is None:
+        return cx, cy, r, False
+    try:
+        mr, mxr = int(h * 0.05), int(h * 0.25)
+        hit = barbell._detect_plate(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
+                                    np.array([np.nan, np.nan]), mr, mxr, np.pi * mr * mr * 0.5)
+        if hit is not None:
+            return int(hit[0][0]), int(hit[0][1]), int(hit[1]), True
+    except Exception:
+        pass
+    return cx, cy, r, False
+
+
 def on_autodetect(frame0):
-    """Quick mode: find the plate automatically (largest round, saturated blob) and fill the marker
-    so you can skip tapping. Adjustable before analysing — auto-detect trades a little scale
-    accuracy for speed, so it's a convenience, not a replacement for a careful mark."""
+    """Re-run plate auto-detection and fill the marker — adjustable before analysing. Auto-detect
+    trades a little scale accuracy for speed, so it's a convenience, not a careful mark."""
     if frame0 is None:
         return gr.update(), gr.update(), gr.update(), gr.update(), 0, SEED_INSTR
-    h = frame0.shape[0]
-    min_r, max_r = int(h * 0.05), int(h * 0.25)
-    bgr = cv2.cvtColor(frame0, cv2.COLOR_RGB2BGR)   # frame0 is RGB; _detect_plate expects BGR
-    hit = barbell._detect_plate(bgr, np.array([np.nan, np.nan]),
-                                min_r, max_r, np.pi * min_r * min_r * 0.5)
-    if hit is None:
-        return (gr.update(), gr.update(), gr.update(), gr.update(), 0,
-                "No plate found automatically — tap the plate to mark it.")
-    (cx, cy), r = hit
-    return (_reticle_view(frame0, int(cx), int(cy), int(r)), int(cx), int(cy), int(r), 0,
-            "Auto-detected the plate ✓ — adjust if needed, then **Analyse**.")
+    h, w = frame0.shape[:2]
+    cx, cy, r, detected = _auto_or_default(frame0, h, w)
+    instr = ("Auto-detected the plate ✓ — adjust if needed, then **Analyse**." if detected
+             else "No plate found automatically — tap the plate to mark it.")
+    return _reticle_view(frame0, cx, cy, r), cx, cy, r, 0, instr
 
 
 @spaces.GPU(duration=120)

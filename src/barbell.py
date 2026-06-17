@@ -286,7 +286,39 @@ def scale_from_seed(radius_px):
     return PLATE_DIAMETER_M / (2.0 * float(radius_px))
 
 
-def velocity_per_rep(bar_xy, reps, fps, scale):
+def _eccentric_s(y, reps, i, fps, lift):
+    """Lowering duration of rep i in seconds, EXCLUDING rest. Squat: the descent into this rep's
+    bottom, timed from when the bar leaves the top (the rest at the top is dropped). Deadlift: the
+    lowering from this rep's lockout down to the next floor touch. None if it can't be determined."""
+    if lift == "deadlift":
+        if i + 1 >= len(reps):
+            return None
+        top, nxt = reps[i]["top"], reps[i + 1]["bottom"]
+        if nxt <= top:
+            return None
+        seg = y[top: nxt + 1]                             # lockout -> next liftoff
+        yfloor, ytop = float(seg.max()), float(seg.min())
+        rom = yfloor - ytop
+        if rom <= 0:
+            return None
+        near_floor = np.where(seg >= yfloor - 0.1 * rom)[0]   # first floor touch = touchdown (rest after)
+        touchdown = top + int(near_floor[0]) if len(near_floor) else nxt
+        return (touchdown - top) / fps if touchdown > top else None
+    start = reps[i - 1]["top"] if i > 0 else 0           # squat: from the previous lockout / start
+    bottom = reps[i]["bottom"]
+    if bottom <= start:
+        return None
+    seg = y[start: bottom + 1]                            # y is vertical px (up = smaller)
+    ytop = float(seg.min())
+    rom = float(seg.max()) - ytop
+    if rom <= 0:
+        return None
+    near_top = np.where(seg <= ytop + 0.1 * rom)[0]       # frames still near the top (resting)
+    descent_start = start + int(near_top[-1]) if len(near_top) else start
+    return (bottom - descent_start) / fps if bottom > descent_start else None
+
+
+def velocity_per_rep(bar_xy, reps, fps, scale, lift="squat"):
     """Per-rep concentric velocity from the plate's vertical motion (Butterworth-filtered).
 
     The concentric is the span where the bar is actually moving UP (velocity above a threshold),
@@ -319,7 +351,7 @@ def velocity_per_rep(bar_xy, reps, fps, scale):
         if scale and peak_px * scale < MIN_PEAK_MS:
             continue  # not a real concentric pull — drop this spurious bar rep
         mcv_px = disp_px / dt if dt > 0 else 0.0
-        ecc_s = (valley - reps[i - 1]["top"]) / fps if i > 0 else None   # lowering: prev lockout -> this bottom
+        ecc_s = _eccentric_s(y, reps, i, fps, lift)   # lowering only, rest excluded (lift-aware)
         out.append(_pack(disp_px, mcv_px, peak_px, dt, scale, ecc_s))
     return out
 
