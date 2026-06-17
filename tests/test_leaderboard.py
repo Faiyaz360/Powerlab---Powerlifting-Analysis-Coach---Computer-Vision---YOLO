@@ -47,6 +47,19 @@ def test_leaderboard_lift_filter(tmp_path):
     assert len(only_dl) == 1 and only_dl[0]["lift"] == "deadlift" and only_dl[0]["bar_load_kg"] == 180
 
 
+def test_lifters_bests_and_per_lifter_filter(tmp_path):
+    db = str(tmp_path / "h.db")
+    history.save_run(db, _rec("Ann", "squat", 120, 90))
+    history.save_run(db, _rec("Ann", "squat", 140, 85))
+    history.save_run(db, _rec("Bo", "deadlift", 200, 80))
+    assert history.lifters(db) == ["Ann", "Bo"]                  # distinct, name-sorted
+    b = history.bests(db, lifter="Ann")
+    assert b["score"] == 90 and b["weight"] == 140               # PRs across Ann's runs
+    ann = history.list_runs(db, lifter="ann")                    # case-insensitive
+    assert len(ann) == 2 and all(r["lifter_name"] == "Ann" for r in ann)
+    assert [v for _, v in history.trend(db, "score", lifter="Ann")] == [90, 85]   # oldest-first
+
+
 def test_init_db_migrates_an_old_table(tmp_path):
     """An older DB missing the leaderboard columns gets them added, no wipe."""
     db = str(tmp_path / "old.db")

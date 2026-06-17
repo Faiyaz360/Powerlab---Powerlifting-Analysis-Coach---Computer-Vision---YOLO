@@ -590,11 +590,8 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     )
 
 
-def load_history(metric: str, lift: str):
-    rows = history.list_runs(DB_PATH, lift=lift or None)
-    table = [[r["created_at"], r["lift"], r["rep_count"], r.get("consistency"),
-              r.get("velocity_loss")] for r in rows]
-    series = history.trend(DB_PATH, metric, lift=lift or None)
+def _trend_fig(series, metric):
+    """Line chart of one metric over time (oldest -> newest). Empty-safe placeholder when no data."""
     fig = charts.velocity_bars([])
     if series:
         import matplotlib
@@ -606,7 +603,38 @@ def load_history(metric: str, lift: str):
         ax.set_xticklabels([t[5:10] for t, _ in series], rotation=45, fontsize=8)
         ax.set_ylabel(metric)
         fig.tight_layout()
-    return table, fig
+    return fig
+
+
+def _bests_html(b) -> str:
+    """Personal-best cards (PRs) — top score, heaviest, best e1RM, fastest mean velocity, best DOTS."""
+    if not b or all(v is None for v in b.values()):
+        return "<div class='fl-hint'>No saved lifts yet — analyse a few to see your bests here.</div>"
+    cards = [
+        _card("Best score", f"{b['score']:g}" if b.get("score") is not None else None, "/100"),
+        _card("Heaviest", f"{b['weight']:g}" if b.get("weight") is not None else None, "kg"),
+        _card("Best est. 1RM", f"{b['e1rm']:g}" if b.get("e1rm") is not None else None, "kg"),
+        _card("Top mean vel", f"{b['mean_velocity']:g}" if b.get("mean_velocity") is not None else None, "m/s"),
+        _card("Best DOTS", f"{b['dots']:g}" if b.get("dots") is not None else None),
+    ]
+    return f"<div class='fl-grid'>{''.join(cards)}</div>"
+
+
+def load_history(metric: str, lift: str, lifter: str):
+    """Past-runs table + a metric trend + personal-best cards, filtered by lift and/or lifter."""
+    lf = lifter or None
+    rows = history.list_runs(DB_PATH, lift=lift or None, lifter=lf)
+    table = [[r["created_at"][:16], r.get("lifter_name") or "—", r["lift"], r.get("bar_load_kg"),
+              r.get("score"), r.get("e1rm_kg"), r.get("mean_velocity")] for r in rows]
+    fig = _trend_fig(history.trend(DB_PATH, metric, lift=lift or None, lifter=lf), metric)
+    bests = _bests_html(history.bests(DB_PATH, lifter=lf, lift=lift or None))
+    return table, fig, bests
+
+
+def on_history_open(metric: str, lift: str, lifter: str):
+    """Tab-open: refresh the lifter dropdown choices, then load (value kept if still valid)."""
+    table, fig, bests = load_history(metric, lift, lifter)
+    return gr.update(choices=[""] + history.lifters(DB_PATH)), table, fig, bests
 
 
 # ---------------------------------------------------------------- UI
@@ -677,12 +705,17 @@ with gr.Blocks(title="Form Lab") as demo:
         tap_state = gr.State(0)         # two-tap marker: 0 = next tap sets centre, 1 = sets radius
     with gr.Tab("History") as history_tab:
         with gr.Row():
-            metric_in = gr.Dropdown(["consistency", "velocity_loss", "mean_velocity"],
-                                    value="consistency", label="Trend metric")
-            hist_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Filter lift")
+            hist_lifter = gr.Dropdown([""], value="", label="Lifter", allow_custom_value=True)
+            hist_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")
+            metric_in = gr.Dropdown(
+                ["score", "e1rm_kg", "mean_velocity", "peak_velocity", "dots", "consistency",
+                 "velocity_loss"], value="score", label="Trend metric")
         refresh_btn = gr.Button("Refresh")
-        hist_table = gr.Dataframe(headers=["date", "lift", "reps", "consistency", "vel loss"],
-                                  label="Past runs")
+        gr.HTML("<div class='fl-sec'>PERSONAL BESTS</div>")
+        bests_out = gr.HTML()
+        hist_table = gr.Dataframe(
+            headers=["date", "lifter", "lift", "weight", "score", "e1RM", "mean vel"],
+            label="Past runs", elem_classes="fl-narrow")
         trend_out = gr.Plot(label="Trend")
     with gr.Tab("Leaderboard") as board_tab:
         gr.Markdown("🏆 **Leaderboard** — each lifter's best validated lift. "
@@ -711,8 +744,12 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
                    report_out, reps_table, mcv_out, path_out, csv_out],
                   show_progress_on=[video_out])   # one progress bar (on the video), not one per output
-    refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
-    history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
+    _hist_in = [metric_in, hist_lift, hist_lifter]
+    _hist_out = [hist_table, trend_out, bests_out]
+    for _c in (metric_in, hist_lift, hist_lifter):
+        _c.change(load_history, _hist_in, _hist_out)
+    refresh_btn.click(load_history, _hist_in, _hist_out)
+    history_tab.select(on_history_open, _hist_in, [hist_lifter, hist_table, trend_out, bests_out])
     board_tab.select(load_board, [board_by, board_lift], board_out)
     board_refresh.click(load_board, [board_by, board_lift], board_out)
     board_by.change(load_board, [board_by, board_lift], board_out)

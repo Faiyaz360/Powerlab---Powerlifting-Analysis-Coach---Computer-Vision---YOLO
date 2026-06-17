@@ -19,7 +19,7 @@ _COLUMNS = [
 
 # metrics allowed in trend() — whitelist prevents SQL injection via the column name
 _TREND_METRICS = {
-    "consistency", "velocity_loss", "mean_velocity", "peak_velocity", "rom_m",
+    "score", "consistency", "velocity_loss", "mean_velocity", "peak_velocity", "rom_m",
     "sticking_pct", "bar_drift_cm", "dots", "e1rm_kg", "peak_power_w", "est_rpe",
 }
 
@@ -71,20 +71,51 @@ def save_run(db_path: str, record: dict) -> int:
         return int(cur.lastrowid)
 
 
-def list_runs(db_path: str, lift: str | None = None, limit: int | None = None) -> list[dict]:
-    """Most-recent-first run summaries, optionally filtered by lift."""
+def list_runs(db_path: str, lift: str | None = None, lifter: str | None = None,
+              limit: int | None = None) -> list[dict]:
+    """Most-recent-first run summaries, optionally filtered by lift and/or lifter (case-insensitive)."""
     init_db(db_path)
-    sql = "SELECT * FROM runs"
-    params: list = []
+    conds, params = [], []
     if lift:
-        sql += " WHERE lift = ?"
+        conds.append("lift = ?")
         params.append(lift)
-    sql += " ORDER BY id DESC"
+    if lifter:
+        conds.append("lifter_name = ? COLLATE NOCASE")
+        params.append(lifter)
+    sql = "SELECT * FROM runs" + (" WHERE " + " AND ".join(conds) if conds else "") + " ORDER BY id DESC"
     if limit:
         sql += " LIMIT ?"
         params.append(limit)
     with _connect(db_path) as conn:
         return [dict(row) for row in conn.execute(sql, params).fetchall()]
+
+
+def lifters(db_path: str) -> list[str]:
+    """Distinct lifter names that have runs (for the History per-lifter filter)."""
+    init_db(db_path)
+    sql = ("SELECT DISTINCT lifter_name FROM runs WHERE lifter_name IS NOT NULL "
+           "AND TRIM(lifter_name) != '' ORDER BY lifter_name COLLATE NOCASE")
+    with _connect(db_path) as conn:
+        return [row[0] for row in conn.execute(sql).fetchall()]
+
+
+def bests(db_path: str, lifter: str | None = None, lift: str | None = None) -> dict:
+    """Personal bests (PRs) over the runs: top score, heaviest lift, best est-1RM, fastest mean
+    velocity, best DOTS. Optionally scoped to one lifter and/or lift."""
+    init_db(db_path)
+    conds, params = [], []
+    if lifter:
+        conds.append("lifter_name = ? COLLATE NOCASE")
+        params.append(lifter)
+    if lift:
+        conds.append("lift = ?")
+        params.append(lift)
+    where = (" WHERE " + " AND ".join(conds)) if conds else ""
+    sql = (f"SELECT MAX(score) score, MAX(bar_load_kg) weight, MAX(e1rm_kg) e1rm, "
+           f"MAX(mean_velocity) mean_velocity, MAX(dots) dots FROM runs{where}")
+    with _connect(db_path) as conn:
+        row = conn.execute(sql, params).fetchone()
+    return dict(row) if row else {}
 
 
 def get_run(db_path: str, run_id: int) -> dict | None:
@@ -94,8 +125,10 @@ def get_run(db_path: str, run_id: int) -> dict | None:
         return dict(row) if row else None
 
 
-def trend(db_path: str, metric: str, lift: str | None = None) -> list[tuple]:
-    """Oldest-first (created_at, value) pairs for one numeric metric, skipping NULLs."""
+def trend(db_path: str, metric: str, lift: str | None = None,
+          lifter: str | None = None) -> list[tuple]:
+    """Oldest-first (created_at, value) pairs for one numeric metric, skipping NULLs. Optionally
+    filtered by lift and/or lifter."""
     if metric not in _TREND_METRICS:
         raise ValueError(f"Unknown trend metric: {metric}")
     init_db(db_path)
@@ -104,6 +137,9 @@ def trend(db_path: str, metric: str, lift: str | None = None) -> list[tuple]:
     if lift:
         sql += " AND lift = ?"
         params.append(lift)
+    if lifter:
+        sql += " AND lifter_name = ? COLLATE NOCASE"
+        params.append(lifter)
     sql += " ORDER BY id ASC"
     with _connect(db_path) as conn:
         return [(row["created_at"], row[metric]) for row in conn.execute(sql, params).fetchall()]
