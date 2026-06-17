@@ -24,7 +24,7 @@ _BROWSER_SAFE_PIXFMTS = {"yuv420p", "yuvj420p"}
 # Cap the longer side of the working clip. Downscaling here makes the transcode, pose, bar tracking
 # and rendering all faster (fewer pixels) with no real accuracy cost — the pose model resizes
 # internally anyway, and the marked plate scales with the frame. 1280 keeps the plate well-resolved.
-TARGET_LONG_SIDE = 960
+TARGET_LONG_SIDE = 1280   # working size — bigger = crisper overlays (was 960; 1280 ~ phone width)
 
 
 def _needs_transcode(codec: str | None, pix_fmt: str | None) -> bool:
@@ -96,6 +96,23 @@ def browser_safe_video(path, out_dir="output/_preview") -> str:
     except Exception:
         return str(path)  # transcode failed — original still analyses fine
     return str(out)
+
+
+def transcode_h264(in_path, out_path) -> str:
+    """Re-encode an mp4 (the cv2 mp4v render) to crisp H.264 8-bit (crf 18) for clean, blocking-free
+    browser playback. Returns out_path, or the input on any failure."""
+    if shutil.which("ffmpeg") is None:
+        return str(in_path)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(in_path),
+             "-c:v", "libx264", "-pix_fmt", "yuv420p", "-preset", "veryfast", "-crf", "18",
+             "-an", "-movflags", "+faststart", str(out_path)],
+            capture_output=True, timeout=300, check=True,
+        )
+    except Exception:
+        return str(in_path)
+    return str(out_path)
 
 
 def duration_s(path) -> float:

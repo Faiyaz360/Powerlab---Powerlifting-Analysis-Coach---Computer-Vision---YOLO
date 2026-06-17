@@ -6,6 +6,7 @@ from pathlib import Path
 from . import barbell as barmod
 from . import coach as coachmod
 from . import faults as faultsmod
+from . import media as mediamod
 from . import metrics as metricsmod
 from . import pose as posemod
 from . import render as rendermod
@@ -52,8 +53,10 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["skeleton"] = skeleton   # "side" camera-side joints / "full" all joints / "off" bar-path only
     analysis["bar_load"] = bar_load   # kg, for the on-video HUD (None if not entered)
 
-    annotated = out_dir / f"{name}_annotated.mp4"
-    rendermod.render_video(video_path, annotated, pose, analysis)
+    raw = out_dir / f"{name}_annotated_raw.mp4"
+    final = out_dir / f"{name}_annotated.mp4"
+    rendermod.render_video(video_path, raw, pose, analysis)
+    annotated = mediamod.transcode_h264(str(raw), str(final))   # crisp H.264 for browser playback
 
     paths = reportmod.write_report(out_dir, name, pose, analysis, faults, cues)
     paths["annotated_video"] = str(annotated)

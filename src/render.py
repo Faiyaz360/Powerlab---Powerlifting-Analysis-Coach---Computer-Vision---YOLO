@@ -116,31 +116,32 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             path_runs.append((s0, len(y) - 1, bool(up[-1])))
         path_panel_box = (bx0, by0, bx0 + pw, by0 + ph, cxp, ytop, ybot)
 
-    # Bottom overlays: the per-rep table (lowest strip) with the velocity graph just above it.
+    # Compact rep table (Rep | Vel | OK) stacked UNDER the bar-path panel, top-right.
     made_flags = [rm.get("depth_pass", rm.get("lockout_pass")) for rm in rep_metrics]  # ✓/✗ per rep
-    table_img = charts.velocity_table_img(bar_velocity, int(pose.width * 0.92), made_flags)
-    table_xy = None
-    bottom = int(pose.height * 0.975)
-    if table_img is not None:
-        th, tw = table_img.shape[:2]
-        table_xy = ((pose.width - tw) // 2, pose.height - th - 8)
-        bottom = table_xy[1] - 8                  # the graph must end above the table
+    table_img = table_xy = None
+    if path_panel_box is not None:
+        table_img = charts.velocity_table_img(bar_velocity, path_panel_box[2] - path_panel_box[0],
+                                              made_flags)
+        if table_img is not None:
+            table_xy = (path_panel_box[0], path_panel_box[3] + 8)   # just below the panel
 
-    # On-video real-time velocity graph: precompute the curve's pixel points once (frame dims fixed).
+    # On-video real-time velocity graph: full-width strip along the bottom.
     vel_series = analysis.get("bar_velocity_series")
     graph_pts, graph_box = None, None
+    badge_y = int(pose.height * 0.80)             # the depth flash sits just above the graph
     if vel_series is not None and len(vel_series) >= 2:
         vs = np.nan_to_num(np.asarray(vel_series, dtype=float))
         vmax = float(np.max(np.abs(vs))) or 1.0
         n = len(vs)
         gx0, gx1 = int(pose.width * 0.05), int(pose.width * 0.95)
-        gy1 = bottom
-        gy0 = gy1 - int(pose.height * 0.13)
+        gy1 = int(pose.height * 0.97)
+        gy0 = gy1 - int(pose.height * 0.14)
         gmid = (gy0 + gy1) // 2
         xs = gx0 + (gx1 - gx0) * np.arange(n) // max(1, n - 1)
         ys = np.clip((gmid - (vs / vmax) * ((gy1 - gy0) / 2) * 0.9).astype(int), gy0, gy1)
         graph_pts = np.stack([xs, ys], axis=1).astype(np.int32)
         graph_box = (gx0, gy0, gx1, gy1, gmid, vmax)
+        badge_y = gy0
 
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
@@ -173,7 +174,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             speed_ms = (bar_speeds[f] * fps * scale) if (bar_speeds is not None and scale) else None
             mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
             _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
-            _draw_badge(frame, f, rep_metrics, badge_window)
+            _draw_badge(frame, f, rep_metrics, badge_window, badge_y)
             _draw_velocity_graph(frame, graph_pts, graph_box, f)
             _draw_path_panel(frame, path_panel_pts, path_runs, path_panel_box, f)
             if table_img is not None and table_xy is not None:
@@ -346,7 +347,7 @@ def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
     """Translucent top-left panel with live metrics (WL-style on-video readout): exercise, weight,
     rep count, the bar's current speed, and the last rep's mean concentric velocity. The box
     auto-sizes to its text and everything scales with the frame."""
-    s = max(0.9, frame.shape[1] / 850.0)
+    s = max(0.72, frame.shape[1] / 1050.0)        # slightly smaller HUD
     header = (lift or "").upper() + (f"   {bar_load:g} kg" if bar_load else "")
     rows = [(header, 0.95 * s, YELLOW), (f"REP {rep_no}", 0.8 * s, WHITE)]
     if speed_ms is not None:
@@ -434,19 +435,19 @@ def _draw_path_panel(frame, pts, runs, box, f):
                 0.42 * s, (205, 205, 209), 1, cv2.LINE_AA)
 
 
-def _draw_badge(frame, f, rep_metrics, window):
-    """When a rep hits depth (squat) / lockout (deadlift), flash a bold centred badge — green with a
-    tick when made, red when not."""
+def _draw_badge(frame, f, rep_metrics, window, badge_y):
+    """When a rep hits depth (squat) / lockout (deadlift), flash a bold badge on the right just above
+    the velocity graph — green when made, red when not."""
     for rm in rep_metrics:
         if abs(f - rm["badge_frame"]) <= window:
             text, ok = rm["badge"]
             label = text.replace(" OK", "") if ok else text   # cv2 can't draw unicode ticks
             color = GREEN if ok else RED
-            s = max(0.9, frame.shape[1] / 700.0)
+            s = max(0.8, frame.shape[1] / 800.0)
             thick = max(2, int(3 * s))
-            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.2 * s, thick)
-            x = (frame.shape[1] - tw) // 2
-            y = int(frame.shape[0] * 0.46)
-            cv2.rectangle(frame, (x - 14, y - th - 14), (x + tw + 14, y + 14), (20, 20, 24), -1)
-            cv2.putText(frame, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.2 * s, color, thick, cv2.LINE_AA)
+            (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 1.1 * s, thick)
+            x = int(frame.shape[1] * 0.95) - tw            # right-aligned
+            y = badge_y - int(12 * s)                      # just above the graph
+            cv2.rectangle(frame, (x - 12, y - th - 12), (x + tw + 12, y + 12), (20, 20, 24), -1)
+            cv2.putText(frame, label, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.1 * s, color, thick, cv2.LINE_AA)
             return
