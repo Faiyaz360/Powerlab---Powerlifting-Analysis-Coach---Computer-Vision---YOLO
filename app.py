@@ -101,6 +101,9 @@ footer {display: none !important;}
 .fl-cap {text-align: center; font-size: 12px; color: var(--body-text-color-subdued); margin-top: 6px;}
 .fl-share-note {font-size: 13px; color: var(--body-text-color-subdued); padding: 6px 2px; line-height: 1.5;}
 .fl-share-note b {color: #8b7bf0;}
+.fl-guide {font-size: 13.5px; line-height: 1.7; color: var(--body-text-color);}
+.fl-guide b {color: #8b7bf0;}
+.fl-guide-note {display: inline-block; margin-top: 6px; color: var(--body-text-color-subdued);}
 .fl-sec {font-size: 13px; font-weight: 600; color: var(--body-text-color-subdued);
          margin: 14px 0 6px; letter-spacing: .02em;}
 .fl-narrow {max-width: 560px; margin: 0 auto;}
@@ -809,6 +812,19 @@ with gr.Blocks(title="Form Lab") as demo:
     with gr.Tab("Analyse"):
         # --- inputs: one clean centred column (mobile-first; scales to desktop) ---
         with gr.Column(elem_classes="fl-narrow"):
+            with gr.Accordion("📷 Camera setup — read first (side-on = valid metrics)", open=False):
+                gr.HTML(
+                    "<div class='fl-guide'>"
+                    "<b>Film dead side-on.</b> Camera square to your side so the plate reads as a full "
+                    "circle — not angled. Off-axis foreshortens every joint angle.<br>"
+                    "<b>Whole body + barbell in frame</b>, a little headroom and floor. Step the camera "
+                    "~2–3 m back so nothing is cut off.<br>"
+                    "<b>Camera at hip / bar height</b> on a tripod or propped object — not tilted up or down.<br>"
+                    "<b>60 fps if you can</b> (120 for the cleanest bar speed). Good light, plainish "
+                    "background, lifter clearly separated from clutter.<br>"
+                    "<span class='fl-guide-note'>After you analyse, the app auto-flags it if your camera "
+                    "angle was off-side — so you know whether to trust the numbers.</span>"
+                    "</div>")
             # lifter details first — drive the leaderboard + strength scores
             gr.HTML("<div class='fl-sec'>LIFTER</div>")
             with gr.Row():
