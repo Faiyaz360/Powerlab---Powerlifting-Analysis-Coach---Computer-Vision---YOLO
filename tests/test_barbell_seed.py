@@ -33,6 +33,21 @@ def test_detect_plate_seed_hough_finds_a_matte_plate():
     assert mr <= r <= int(h * 0.25)
 
 
+def test_detect_bar_reps_liftoff_is_after_floor_rest():
+    """The bar rests on the floor, then lifts: the rep's `liftoff` (bar off the ground) is near the
+    rise, NOT the early valley that sits in the floor rest — the red 'rep start' marker source."""
+    n, fps, scale = 60, 30.0, 0.002
+    y = np.full(n, 200.0)                                  # bar on the floor (high y)
+    y[40:46] = [180, 160, 140, 120, 110, 100]             # pull up to the top at frame 45
+    y[46:52] = [110, 130, 160, 190, 200, 200]             # lower back down
+    bar_xy = np.column_stack([np.full(n, 50.0), y])
+    reps = barbell.detect_bar_reps(bar_xy, fps, scale, min_rom_m=0.05)
+    assert reps
+    r = reps[0]
+    assert r["liftoff"] > r["bottom"]                     # liftoff after the floor-rest valley
+    assert r["liftoff"] >= 38                             # near where the pull actually begins (~40)
+
+
 def test_velocity_per_rep_keeps_slow_reps_and_stays_aligned():
     """Regression (the 'rep 2 vanished' bug): a SLOW (heavy/grinder) rep is kept with its velocity,
     and the output is 1:1 with reps — a bad rep is None IN PLACE, never removed — so it can't shift

@@ -1,7 +1,7 @@
 """Unit tests for rep detection (pure function, deterministic — no video needed)."""
 import numpy as np
 
-from src.metrics import _deadlift_lockout, detect_reps
+from src.metrics import _deadlift_lockout, _liftoff_frame, detect_reps
 
 STAND = 160.0
 BOTTOM = 140.0
@@ -14,6 +14,13 @@ def test_deadlift_lockout_needs_erect_torso_and_locked_knees():
     assert _deadlift_lockout(top_lean=25.0, top_knee=168.0)[2] is False
     # erect but the knee is clearly bent (soft lockout) -> no lockout
     assert _deadlift_lockout(top_lean=5.0, top_knee=140.0)[2] is False
+
+
+def test_liftoff_skips_floor_rest_to_the_break_off():
+    # hip sits near the floor (60) through a long rest, then rises to lockout (170): liftoff is the
+    # LAST near-floor frame (the bar breaking the ground), not the argmin valley at the start.
+    sig = np.array([60, 60, 60, 60, 60, 60, 60, 80, 120, 170], dtype=float)
+    assert _liftoff_frame(sig, 0, 9) == 6        # index 6 = last frame still at the floor before the rise
 
 
 def test_single_rep_found_with_correct_bottom():

@@ -164,10 +164,11 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         graph_pts = np.stack([xs, ys], axis=1).astype(np.int32)
         graph_box = (gx0, gy0, gx1, gy1, gmid, vmax)
         badge_y = gy0
-        # Each rep's concentric span (bottom -> lockout) as series indices: the green fill area and
-        # the red 'rep start' marker on the graph. Frame index == series index == graph-point index.
-        graph_reps = [(int(r["bottom"]), min(int(r["top"]), n - 1)) for r in bar_reps
-                      if 0 <= int(r["bottom"]) < n] if bar_reps else None
+        # Each rep's concentric span (LIFTOFF -> lockout) as series indices: the green fill area and
+        # the red 'rep start' marker. Liftoff = the bar breaking the floor (not the rest valley, which
+        # can sit seconds back). Frame index == series index == graph-point index.
+        graph_reps = [(int(r.get("liftoff", r["bottom"])), min(int(r["top"]), n - 1)) for r in bar_reps
+                      if 0 <= int(r.get("liftoff", r["bottom"])) < n] if bar_reps else None
 
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(

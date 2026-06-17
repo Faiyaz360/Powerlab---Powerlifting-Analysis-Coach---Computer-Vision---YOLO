@@ -489,7 +489,15 @@ def detect_bar_reps(bar_xy, fps, scale, min_rom_m=0.12):
         if len(seg):
             valley = prev + int(np.argmin(seg))
             if pk > valley:
-                reps.append({"bottom": valley, "top": int(pk)})
+                # liftoff = the last frame still near the floor before the rise to the lockout peak,
+                # i.e. the bar breaking the ground = the real rep START. The valley alone can sit in
+                # setup/rest seconds earlier (the bar resting on the floor), so mark + fill from here.
+                rise = height[valley:pk + 1]
+                hfloor, htop = float(rise.min()), float(rise.max())
+                rom = htop - hfloor
+                near = np.where(rise <= hfloor + 0.1 * rom)[0] if rom > 0 else np.array([0])
+                liftoff = valley + int(near[-1]) if len(near) else valley
+                reps.append({"bottom": valley, "top": int(pk), "liftoff": liftoff})
         prev = int(pk)
     return reps
 

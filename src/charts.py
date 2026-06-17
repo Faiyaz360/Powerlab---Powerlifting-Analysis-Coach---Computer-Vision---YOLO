@@ -66,8 +66,8 @@ def angle_curve(analysis: dict):
     t = np.arange(len(series)) / analysis["fps"]
     fig, ax = plt.subplots(figsize=(4, 2.4))
     ax.plot(t, series, color="#378ADD")
-    for r in analysis.get("reps", []):
-        ax.axvline(r["bottom"] / analysis["fps"], color="#E24B4A", ls="--", alpha=0.5)
+    for r in analysis.get("reps", []):   # red = rep start (liftoff: bar off the floor), not the rest valley
+        ax.axvline(r.get("liftoff", r["bottom"]) / analysis["fps"], color="#E24B4A", ls="--", alpha=0.5)
     ax.set_xlabel("time (s)")
     ax.set_ylabel(f"{key} angle (deg)")
     fig.tight_layout()
@@ -112,8 +112,8 @@ def velocity_time(analysis: dict):
     ax.axhline(0, color="#9AA0A6", lw=0.8)
     ax.fill_between(t, vs, 0, where=vs > 0, color="#1D9E75", alpha=0.25)  # concentric (upward)
     ax.plot(t, vs, color="#378ADD", lw=1.4)
-    for r in analysis.get("bar_reps", []):
-        ax.axvline(r["bottom"] / analysis["fps"], color="#E24B4A", ls="--", alpha=0.4)
+    for r in analysis.get("bar_reps", []):   # red = rep start (liftoff), not the floor-rest valley
+        ax.axvline(r.get("liftoff", r["bottom"]) / analysis["fps"], color="#E24B4A", ls="--", alpha=0.4)
     ax.set_xlabel("time (s)")
     ax.set_ylabel(f"bar velocity ({unit})")
     fig.tight_layout()

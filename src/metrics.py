@@ -225,6 +225,22 @@ def _is_spurious_squat(end, bottom, ascent_s, descent_s, duration_s, knee_range)
 
 # ---------------------------------------------------------------- deadlift
 
+def _liftoff_frame(signal: np.ndarray, bottom: int, top: int) -> int:
+    """The frame the bar breaks the floor = the rep START: the LAST frame still near the floor (the
+    signal's min over the pull) before it rises to the lockout ``top``. The argmin valley alone can
+    sit seconds earlier, on the floor during setup/rest. ``signal`` rises floor -> lockout (hip angle).
+    """
+    seg = signal[bottom : top + 1]
+    if len(seg) == 0:
+        return bottom
+    floor, peak = float(np.nanmin(seg)), float(np.nanmax(seg))
+    rom = peak - floor
+    if rom <= 0:
+        return bottom
+    near = np.where(seg <= floor + 0.1 * rom)[0]
+    return bottom + int(near[-1]) if len(near) else bottom
+
+
 def _deadlift_lockout(top_lean: float, top_knee: float):
     """IPF 2026 deadlift lockout from the top-of-rep geometry: standing erect (torso ~vertical = the
     shoulder lined up over the hip) AND knees locked straight. Returns (hips_locked, knees_locked,
@@ -268,9 +284,10 @@ def analyze_deadlift(pose: P.PoseResult) -> dict:
     for k in kept:
         start, bottom, top, top_hip = k["start"], k["bottom"], k["top"], k["top_hip"]
         top_knee, top_lean = k["top_knee"], k["top_lean"]
+        liftoff = _liftoff_frame(s["hip"], bottom, top)   # bar breaks the floor = the rep start
         hips_locked, knees_locked, lockout_pass = _deadlift_lockout(top_lean, top_knee)
         hip_rise_ratio = _hip_rise_ratio(s, bottom, top)
-        kept_reps.append({"start": start, "bottom": bottom, "end": top})
+        kept_reps.append({"start": start, "bottom": bottom, "liftoff": liftoff, "end": top})
         rep_metrics.append(
             {
                 "start_s": round(start / fps, 2),
@@ -284,7 +301,7 @@ def analyze_deadlift(pose: P.PoseResult) -> dict:
                 "lockout_pass": lockout_pass,
                 "hip_rise_ratio": None if hip_rise_ratio is None else round(hip_rise_ratio, 2),
                 "descent_s": round((bottom - start) / fps, 2),
-                "ascent_s": round((top - bottom) / fps, 2),
+                "ascent_s": round((top - liftoff) / fps, 2),   # the pull only (excl. floor rest)
                 "badge_frame": top,
                 "badge": ("LOCKOUT" if lockout_pass else "INCOMPLETE", lockout_pass),
             }
