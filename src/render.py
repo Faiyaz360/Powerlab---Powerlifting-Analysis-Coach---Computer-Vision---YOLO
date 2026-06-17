@@ -24,6 +24,7 @@ JOINT = (255, 255, 255)     # joint dots = white (also clear of the bar-path col
 SKELETON = (230, 230, 230)  # faint full-body skeleton, under the bold analysis chain
 PATH_FADED = (150, 150, 150)  # completed reps drawn faint grey under the bright current-rep path
 START_LINE = (60, 200, 255)   # amber 'start' reference line (BGR)
+SPINE = (255, 100, 210)       # bright violet back-axis line (BGR) — distinct from skeleton/bar-path
 
 
 def _xy(landmarks, f, idx):
@@ -89,6 +90,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
     bar_xy = analysis.get("bar_xy")
     # skeleton overlay: "side" = camera-side joints (default), "full" = all joints, "off" = bar-path only
     skeleton = analysis.get("skeleton", "side")
+    lean_series = analysis["series"].get("lean")   # per-frame torso lean -> the back-axis tracker angle
 
     if side == "left":
         chain = [P.L_SHOULDER, P.L_HIP, P.L_KNEE, P.L_ANKLE, P.L_FOOT]
@@ -184,14 +186,18 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             break
         if f < pose.num_frames:
             cur_start = max([e for e in rep_end_frames if e <= f], default=0)  # current-rep boundary
+            region = _body_region(lm, f)
             if skeleton != "off":
-                region = _body_region(lm, f)
                 if skeleton == "full":                     # all points (front view / detailed)
                     _draw_full_skeleton(frame, lm, f, region)
                     _draw_skeleton(frame, lm, f, chain, region)
                 else:                                      # "side": camera-side sagittal points only
                     _draw_side_skeleton(frame, lm, f, side, region)
                 _draw_joint_angles(frame, lm, f, side, region)
+            # Back-axis tracker (always on): the torso-lean line + live angle. Stage 1 of the spine
+            # feature — lean / hinge only; spinal rounding comes with the silhouette stage.
+            lean_f = float(lean_series[f]) if (lean_series is not None and f < len(lean_series)) else None
+            _draw_back_line(frame, lm, f, side, region, lean_f)
             if start_y is not None:
                 _draw_start_line(frame, start_y)
             if start_x is not None:
@@ -298,6 +304,27 @@ def _draw_joint_angles(frame, lm, f, side, region):
             if not np.isnan(ang):
                 cv2.putText(frame, f"{ang:.0f}", (pb[0] + int(10 * s), pb[1]),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6 * s, WHITE, max(1, int(2 * s)), cv2.LINE_AA)
+
+
+def _draw_back_line(frame, lm, f, side, region, lean_deg):
+    """Bold 'back axis' line: low-back (camera-side hip) -> upper-back (camera-side shoulder), plus the
+    live torso-lean angle. HONEST SCOPE: built from 2 points, so it shows back LEAN / hinge angle, not
+    spinal ROUNDING (rounding needs the back silhouette or 3D spine — that's the next stage)."""
+    hip = _xy_ok(lm, f, P.L_HIP if side == "left" else P.R_HIP, region)
+    sh = _xy_ok(lm, f, P.L_SHOULDER if side == "left" else P.R_SHOULDER, region)
+    if not hip or not sh:
+        return
+    s = max(0.5, frame.shape[1] / 1300.0)
+    dx, dy = sh[0] - hip[0], sh[1] - hip[1]
+    p_low = (int(hip[0] - 0.08 * dx), int(hip[1] - 0.08 * dy))   # extend ~8% past each end so the back
+    p_up = (int(sh[0] + 0.08 * dx), int(sh[1] + 0.08 * dy))      # axis reads as a line, hugging the back
+    cv2.line(frame, p_low, p_up, SPINE, max(2, int(4 * s)), cv2.LINE_AA)
+    cv2.circle(frame, hip, max(3, int(5 * s)), SPINE, -1)
+    cv2.circle(frame, sh, max(3, int(5 * s)), SPINE, -1)
+    if lean_deg is not None and not np.isnan(lean_deg):
+        mx, my = (hip[0] + sh[0]) // 2, (hip[1] + sh[1]) // 2
+        cv2.putText(frame, f"back {lean_deg:.0f}", (mx + int(12 * s), my),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55 * s, SPINE, max(1, int(2 * s)), cv2.LINE_AA)
 
 
 def _speed_color(t: float):
