@@ -15,10 +15,12 @@ from . import pose as P
 
 GREEN = (0, 255, 0)
 RED = (0, 0, 255)
-ORANGE = (0, 200, 255)
 WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
 MAGENTA = (255, 0, 255)
+SKEL_LINE = (0, 255, 255)   # bold analysis-chain colour = TRUE yellow (BGR); clear of the bar-path
+#                             red->blue->green gradient so the skeleton never blends into the bar line
+JOINT = (255, 255, 255)     # joint dots = white (also clear of the bar-path colours)
 SKELETON = (230, 230, 230)  # faint full-body skeleton, under the bold analysis chain
 PATH_FADED = (150, 150, 150)  # completed reps drawn faint grey under the bright current-rep path
 START_LINE = (60, 200, 255)   # amber 'start' reference line (BGR)
@@ -252,17 +254,17 @@ def _draw_full_skeleton(frame, lm, f, region):
             cv2.line(frame, pts[a], pts[b], SKELETON, 2, cv2.LINE_AA)
     for p in pts.values():
         if p:
-            cv2.circle(frame, p, 4, ORANGE, -1)
+            cv2.circle(frame, p, 4, JOINT, -1)
 
 
 def _draw_skeleton(frame, lm, f, chain, region):
     pts = [_xy_ok(lm, f, i, region) for i in chain]
     for a, b in zip(pts, pts[1:]):
         if a and b:
-            cv2.line(frame, a, b, GREEN, 3)
+            cv2.line(frame, a, b, SKEL_LINE, 3)
     for p in pts:
         if p:
-            cv2.circle(frame, p, 6, ORANGE, -1)
+            cv2.circle(frame, p, 6, JOINT, -1)
 
 
 def _draw_side_skeleton(frame, lm, f, side, region):
@@ -275,10 +277,10 @@ def _draw_side_skeleton(frame, lm, f, side, region):
         pts.setdefault(b, _xy_ok(lm, f, b, region))
     for a, b in edges:
         if pts[a] and pts[b]:
-            cv2.line(frame, pts[a], pts[b], GREEN, 3, cv2.LINE_AA)
+            cv2.line(frame, pts[a], pts[b], SKEL_LINE, 3, cv2.LINE_AA)
     for p in pts.values():
         if p:
-            cv2.circle(frame, p, 6, ORANGE, -1)
+            cv2.circle(frame, p, 6, JOINT, -1)
 
 
 def _draw_joint_angles(frame, lm, f, side, region):
