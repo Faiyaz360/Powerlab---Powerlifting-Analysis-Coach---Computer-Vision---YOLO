@@ -59,3 +59,13 @@ def test_velocity_graph_draws_rep_fill_and_start_line():
     b, g, r = frame[:, :, 0], frame[:, :, 1], frame[:, :, 2]
     assert ((r > 150) & (g < 80) & (b < 80)).any()           # red 'rep start' vertical present
     assert ((g > 50) & (g > b + 20) & (g > r + 20)).any()    # green concentric fill present
+
+
+def test_score_badge_draws_and_is_empty_safe():
+    frame = np.zeros((300, 600, 3), np.uint8)
+    render._draw_score_badge(frame, {"score": 96, "grade": "S"}, 20, 20, 1.0)
+    assert frame.any()                                       # drew the gamified badge
+    blank = np.zeros((300, 600, 3), np.uint8)
+    render._draw_score_badge(blank, None, 20, 20, 1.0)        # no score -> no-op
+    render._draw_score_badge(blank, {"score": None, "grade": None}, 20, 20, 1.0)
+    assert not blank.any()

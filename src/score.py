@@ -29,7 +29,7 @@ _W = {"legality": 0.35, "technique": 0.25, "bar_path": 0.15, "control": 0.15, "c
 _DRIFT_BAD_CM = 15.0      # horizontal bar drift at which the bar-path sub-score hits 0
 _COACHING_PENALTY = 0.4   # technique deduction per coaching fault on the rep
 _CONTROL_FULL_RATIO = 0.6  # eccentric/concentric time at/above which control is full (not slammed down)
-_GRADES = [(90, "A+"), (80, "A"), (70, "B"), (60, "C"), (50, "D")]
+_GRADES = [(95, "S"), (90, "A+"), (80, "A"), (70, "B"), (60, "C"), (50, "D")]
 
 
 def score_lift(analysis: dict, faults: dict | None = None, confidence: dict | None = None) -> dict | None:

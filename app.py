@@ -546,12 +546,13 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
         except Exception:
             pass
 
+    name_clean = (lifter_name or "").strip()
     progress(0.1, desc="Loading video...")
     try:
         result = pipeline.analyze(
             video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple, backend=POSE_BACKEND,
             skeleton={"Side points": "side", "All points": "full", "None": "off"}.get(skel, "side"),
-            bar_load=bar_load,
+            bar_load=bar_load, lifter_name=name_clean or None, sex=sex, bodyweight=bodyweight,
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:
@@ -561,12 +562,11 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
 
     a = result["analysis"]
     adv = _advanced(a)
-    c = _confidence(a)
+    c = a.get("confidence") or _confidence(a)          # computed once in the pipeline (shared)
     s = _strength(a, bodyweight, sex, bar_load)
-    sc = score.score_lift(a, result["faults"], c)
+    sc = a.get("lift_score") or score.score_lift(a, result["faults"], c)
     # A lift reaches the leaderboard only when it's validated (side-on + legal) AND attributable
     # (a name) with a weight to rank by.
-    name_clean = (lifter_name or "").strip()
     on_board = bool(sc and sc["validated"] and name_clean and bar_load)
     history.save_run(DB_PATH, _summary_record(a, result, adv, name, c, s, bodyweight, sex, bar_load,
                                               lifter_name=name_clean or None, sc=sc,

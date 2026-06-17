@@ -23,7 +23,7 @@ def test_clean_legal_sideon_squat_scores_high_and_validates():
     s = score.score_lift(*_clean_squat(axis_ok=True))
     assert s["legal"] is True
     assert s["validated"] is True
-    assert s["score"] >= 85 and s["grade"] in ("A", "A+")
+    assert s["score"] >= 85 and s["grade"] in ("S", "A+", "A")
 
 
 def test_missed_depth_is_not_validated_and_not_legal():

@@ -200,7 +200,9 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             done = sum(1 for e in rep_end_frames if e <= f)
             speed_ms = (bar_speeds[f] * fps * scale) if (bar_speeds is not None and scale) else None
             mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
-            _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
+            _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms,
+                      name=analysis.get("lifter_name"), sex=analysis.get("sex"),
+                      bodyweight=analysis.get("bodyweight"), lift_score=analysis.get("lift_score"))
             _draw_badge(frame, f, rep_metrics, badge_window, badge_y)
             _draw_velocity_graph(frame, graph_pts, graph_box, f, graph_reps)
             _draw_path_panel(frame, path_panel_pts, path_runs, path_panel_box, f)
@@ -370,13 +372,58 @@ def _draw_center_line(frame, start_x, cur_xy, scale):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.5 * s, (170, 170, 174), 1, cv2.LINE_AA)
 
 
-def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
-    """Translucent top-left panel with live metrics (WL-style on-video readout): exercise, weight,
-    rep count, the bar's current speed, and the last rep's mean concentric velocity. The box
+_GRADE_COLORS = {                       # tier colour (BGR)
+    "S": (80, 205, 255),                # gold
+    "A+": (95, 205, 95), "A": (95, 205, 95),    # green
+    "B": (235, 165, 70),                # blue
+    "C": (70, 180, 245),                # orange
+    "D": (80, 80, 235), "E": (80, 80, 235),     # red
+}
+
+
+def _draw_score_badge(frame, lift_score, x, y, s):
+    """Gamified /100 lift-score badge under the HUD: a tier-coloured grade chip (S / A+ / A / ...)
+    next to the big score number. Tier colour: S gold, A green, B blue, C orange, D-E red."""
+    if not lift_score or lift_score.get("score") is None:
+        return
+    f = cv2.FONT_HERSHEY_SIMPLEX
+    grade = str(lift_score.get("grade") or "")
+    val = lift_score["score"]
+    color = _GRADE_COLORS.get(grade, (200, 200, 200))
+    chip = int(48 * s)
+    pill_w = chip + int(152 * s)
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (x, y), (x + pill_w, y + chip), (14, 14, 18), -1)
+    cv2.addWeighted(overlay, 0.62, frame, 0.38, 0, frame)
+    cv2.rectangle(frame, (x, y), (x + pill_w, y + chip), color, max(1, int(1.5 * s)))   # tier border
+    cv2.rectangle(frame, (x, y), (x + chip, y + chip), color, -1)                        # grade chip
+    (gw, gh), _ = cv2.getTextSize(grade, f, 0.9 * s, max(2, int(2 * s)))
+    cv2.putText(frame, grade, (x + (chip - gw) // 2, y + (chip + gh) // 2), f, 0.9 * s,
+                (20, 20, 24), max(2, int(2 * s)), cv2.LINE_AA)
+    tx = x + chip + int(12 * s)
+    cv2.putText(frame, "LIFT SCORE", (tx, y + int(15 * s)), f, 0.4 * s, (165, 165, 172), 1, cv2.LINE_AA)
+    cv2.putText(frame, f"{val}", (tx, y + int(40 * s)), f, 1.0 * s, WHITE, max(2, int(2 * s)), cv2.LINE_AA)
+    (nw, _), _ = cv2.getTextSize(f"{val}", f, 1.0 * s, max(2, int(2 * s)))
+    cv2.putText(frame, "/100", (tx + nw + int(5 * s), y + int(40 * s)), f, 0.5 * s,
+                (170, 170, 176), 1, cv2.LINE_AA)
+
+
+def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms,
+              name=None, sex=None, bodyweight=None, lift_score=None):
+    """Translucent top-left panel: a compact lifter line (name · gender · bodyweight), then exercise/
+    weight, rep, live + mean bar speed and RPE — with a gamified /100 score badge under it. The box
     auto-sizes to its text and everything scales with the frame."""
     s = max(0.72, frame.shape[1] / 1050.0)        # slightly smaller HUD
+    lifter = "  |  ".join(p for p in (       # ASCII '|' — cv2's Hershey font can't render a '·'
+        ((name or "").strip().upper()[:16] or None),
+        {"male": "M", "female": "F"}.get(sex),
+        (f"{bodyweight:g} kg BW" if bodyweight else None),
+    ) if p)
+    rows = []
+    if lifter:
+        rows.append((lifter, 0.6 * s, (175, 175, 180)))     # small + muted: present, uncluttered
     header = (lift or "").upper() + (f"   {bar_load:g} kg" if bar_load else "")
-    rows = [(header, 0.95 * s, YELLOW), (f"REP {rep_no}", 0.8 * s, WHITE)]
+    rows += [(header, 0.95 * s, YELLOW), (f"REP {rep_no}", 0.8 * s, WHITE)]
     if speed_ms is not None:
         rows.append((f"{speed_ms:.2f} m/s  now", 0.8 * s, WHITE))
     if mean_ms is not None:
@@ -396,6 +443,7 @@ def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms):
     for t, fs, col in rows:
         cv2.putText(frame, t, (x0 + pad, y), cv2.FONT_HERSHEY_SIMPLEX, fs, col, thick, cv2.LINE_AA)
         y += rh
+    _draw_score_badge(frame, lift_score, x0, y0 + box_h + int(8 * s), s)   # gamified score under the HUD
 
 
 def _draw_velocity_graph(frame, pts, box, f, reps_idx=None):

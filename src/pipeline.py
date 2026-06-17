@@ -5,17 +5,20 @@ from pathlib import Path
 
 from . import barbell as barmod
 from . import coach as coachmod
+from . import confidence as confmod
 from . import faults as faultsmod
 from . import media as mediamod
 from . import metrics as metricsmod
 from . import pose as posemod
 from . import render as rendermod
 from . import report as reportmod
+from . import score as scoremod
 
 
 def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
             backend: str = "yolo", model_complexity: int = 2, plate_backend: str = "hsv",
-            seed=None, skeleton: str = "side", bar_load=None) -> dict:
+            seed=None, skeleton: str = "side", bar_load=None,
+            lifter_name=None, sex=None, bodyweight=None) -> dict:
     """Run pose -> metrics -> faults -> coaching -> annotated video + report.
 
     ``backend``: "mediapipe" (CPU) or "yolo" (YOLO11-pose on GPU, sharper landmarks).
@@ -52,6 +55,13 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["bar_velocity_series"] = barmod.velocity_series(bar_xy, pose.fps, scale)  # per-frame trace
     analysis["skeleton"] = skeleton   # "side" camera-side joints / "full" all joints / "off" bar-path only
     analysis["bar_load"] = bar_load   # kg, for the on-video HUD (None if not entered)
+    analysis["lifter_name"] = lifter_name   # on-video HUD + leaderboard attribution
+    analysis["sex"] = sex
+    analysis["bodyweight"] = bodyweight
+    # Confidence (off-axis gate) + the /100 lift score, computed once here so the on-video overlay,
+    # the dashboard and the leaderboard all share the SAME numbers.
+    analysis["confidence"] = confmod.assess(pose)
+    analysis["lift_score"] = scoremod.score_lift(analysis, faults, analysis["confidence"])
 
     raw = out_dir / f"{name}_annotated_raw.mp4"
     final = out_dir / f"{name}_annotated.mp4"
