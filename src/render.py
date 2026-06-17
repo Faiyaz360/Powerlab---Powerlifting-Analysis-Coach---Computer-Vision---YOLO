@@ -9,6 +9,7 @@ import cv2
 import numpy as np
 
 from . import angles
+from . import charts
 from . import pose as P
 
 GREEN = (0, 255, 0)
@@ -88,6 +89,7 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             start_y = float(bar_xy[valid[0], 1])     # where the bar began = the start line
             start_x = float(bar_xy[valid[0], 0])     # bar's start X = the vertical 'centre' line
     rep_means = [(r["top"], bv.get("mean_velocity_ms")) for r, bv in zip(bar_reps, bar_velocity) if bv]
+    path_panel = charts.bar_path_img(analysis, max(150, int(pose.width * 0.34)))  # top-right overlay
 
     # On-video real-time velocity graph: precompute the curve's pixel points once (frame dims fixed).
     vel_series = analysis.get("bar_velocity_series")
@@ -137,6 +139,11 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms)
             _draw_badge(frame, f, rep_metrics, badge_window)
             _draw_velocity_graph(frame, graph_pts, graph_box, f)
+            if path_panel is not None:
+                ph, pw = path_panel.shape[:2]
+                px, py = pose.width - pw - 12, 12
+                if 0 <= px and py + ph <= frame.shape[0] and px + pw <= frame.shape[1]:
+                    frame[py:py + ph, px:px + pw] = path_panel
         writer.write(frame)
         f += 1
 
