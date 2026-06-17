@@ -28,15 +28,16 @@ def _cell(x):
 def velocity_table_img(bar_velocity, width_px: int = 200, made=None):
     """Compact per-rep table (Rep | Vel | OK) as a dark BGR image for the on-video overlay — rep #,
     mean velocity, and a depth/lockout ✓/✗ (from ``made``). None if no data."""
-    rows, oks, ri = [], [], 0
+    rows, oks = [], []
     for i, v in enumerate(bar_velocity or [], start=1):
         if not v:
             continue
-        ok = made[ri] if (made is not None and ri < len(made)) else None
+        # label by the TRUE rep number (i) and align the depth/lockout flag by rep index (i-1), so a
+        # skipped/None rep never shifts the numbering or the ✓/✗ onto the wrong rep.
+        ok = made[i - 1] if (made is not None and i - 1 < len(made)) else None
         rows.append([str(i), _cell(v.get("mean_velocity_ms")),
                      "✓" if ok else ("✗" if ok is False else "-")])
         oks.append(ok)
-        ri += 1
     if not rows:
         return None
     fig, ax = plt.subplots(figsize=(2.2, 0.26 * (len(rows) + 1)), dpi=100)

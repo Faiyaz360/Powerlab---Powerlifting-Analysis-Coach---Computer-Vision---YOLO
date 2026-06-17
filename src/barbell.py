@@ -28,7 +28,11 @@ PLATE_DIAMETER_M = 0.450  # IPF/IWF standard competition / bumper plate
 S_MIN, V_MIN = 90, 60     # a plate is a saturated, bright colour (hue-agnostic at acquisition)
 CIRCULARITY_MIN = 0.55    # contourArea / enclosing-circle area — rejects non-round blobs
 HUE_TOL = 18              # once locked onto the plate's hue, reject other-colour blobs (bg plate)
-MIN_PEAK_MS = 0.3         # a real concentric pull peaks above this; below = height drift, not a rep
+# Interim crude noise floor: a rep whose peak is essentially stationary is detection noise, not a
+# pull. Kept LOW so genuinely slow (heavy/grinder) reps are still shown — the old 0.3 dropped real
+# slow reps. A relative filter (drop a rep only if tiny vs the others) is the better fix, to tune
+# against a real clip. See LESSONS.
+NOISE_FLOOR_MS = 0.05
 # Lucas-Kanade optical-flow tracking of the marked plate (replaces template matching, which drifts).
 _LK_PARAMS = dict(winSize=(21, 21), maxLevel=3,
                   criteria=(cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
@@ -380,8 +384,9 @@ def velocity_per_rep(bar_xy, reps, fps, scale, lift="squat"):
         disp_px = float(y[c0] - y[c1])
         dt = (c1 - c0) / fps
         peak_px = float(np.max(vel_px[c0 : c1 + 1]))
-        if scale and peak_px * scale < MIN_PEAK_MS:
-            continue  # not a real concentric pull — drop this spurious bar rep
+        if scale and peak_px * scale < NOISE_FLOOR_MS:
+            out.append(None)   # essentially stationary = detection noise; None keeps 1:1 with reps
+            continue           # (append, never drop — a removed rep shifts every later rep's number)
         mcv_px = disp_px / dt if dt > 0 else 0.0
         ecc_s = _eccentric_s(y, reps, i, fps, lift)   # lowering only, rest excluded (lift-aware)
         out.append(_pack(disp_px, mcv_px, peak_px, dt, scale, ecc_s))
