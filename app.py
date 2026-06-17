@@ -147,56 +147,94 @@ footer {display: none !important;}
   .fl-score-num {font-size: 36px;}
 }
 
-/* ===== Black-glass + faint-purple theme (mobile-first, easy on the eyes) ===== */
+/* ===== Black + graphite glass, whisper of purple (mobile-first) ===== */
 :root, .gradio-container, .gradio-container.dark, .dark {
-  --body-background-fill: #0a0a0f;
-  --background-fill-primary: rgba(255,255,255,.04);
-  --background-fill-secondary: rgba(255,255,255,.06);
-  --block-background-fill: rgba(255,255,255,.045);
-  --block-border-color: rgba(150,130,255,.14);
-  --border-color-primary: rgba(150,130,255,.16);
-  --body-text-color: rgba(237,235,247,.92);
-  --body-text-color-subdued: rgba(198,194,218,.58);
-  --block-label-text-color: rgba(198,194,218,.72);
-  --input-background-fill: rgba(255,255,255,.05);
-  --neutral-950: #0a0a0f; --neutral-900: #0d0d14;
+  --body-background-fill: #0b0b0e;
+  --background-fill-primary: rgba(255,255,255,.022);
+  --background-fill-secondary: rgba(255,255,255,.04);
+  --block-background-fill: rgba(255,255,255,.028);
+  --block-border-color: rgba(255,255,255,.08);
+  --border-color-primary: rgba(255,255,255,.08);
+  --body-text-color: rgba(236,235,242,.9);
+  --body-text-color-subdued: rgba(172,170,182,.6);
+  /* labels: kill the purple pill -> quiet grey text */
+  --block-label-background-fill: transparent;
+  --block-label-text-color: rgba(172,170,182,.62);
+  --block-title-background-fill: transparent;
+  --block-title-text-color: rgba(172,170,182,.62);
+  --input-background-fill: rgba(255,255,255,.035);
+  --input-border-color: rgba(255,255,255,.08);
+  /* purple ONLY as the accent (muted, not neon) */
+  --button-primary-background-fill: rgba(255,255,255,.05);
+  --button-primary-background-fill-hover: rgba(139,123,240,.18);
+  --button-primary-text-color: #e7e3ff;
+  --button-primary-border-color: rgba(139,123,240,.32);
+  --checkbox-background-color-selected: #6c5ce0;
+  --button-secondary-background-fill: rgba(255,255,255,.05);
+  --button-secondary-background-fill-hover: rgba(255,255,255,.09);
+  --button-secondary-text-color: #d8d6e2;
+  --button-secondary-border-color: rgba(255,255,255,.1);
+  --table-even-background-fill: rgba(255,255,255,.02);
+  --table-odd-background-fill: rgba(255,255,255,.04);
+  --table-border-color: rgba(255,255,255,.08);
+  --color-accent: #8b7bf0; --color-accent-soft: rgba(139,123,240,.16);
+  --slider-color: #8b7bf0;
+  --neutral-950: #0b0b0e; --neutral-900: #121218;
 }
 body, .gradio-container {
-  background: radial-gradient(1100px 560px at 50% -10%, rgba(124,92,255,.12), transparent 62%), #0a0a0f !important;
+  background: radial-gradient(900px 440px at 50% -16%, rgba(120,100,210,.10), transparent 60%), #0b0b0e !important;
   color: var(--body-text-color);
 }
-.gradio-container {max-width: 680px !important;}   /* focused, phone-shaped even on desktop */
-/* glass surfaces */
+.gradio-container {max-width: 640px !important;}
+/* glass: graphite translucency + hairline light border + soft top sheen */
 .fl-card, .fl-score, .fl-coach, .fl-verdict, .lb-row, .block {
-  background: rgba(255,255,255,.045) !important;
-  border: 1px solid rgba(150,130,255,.14) !important;
-  -webkit-backdrop-filter: blur(16px) saturate(1.25);
-  backdrop-filter: blur(16px) saturate(1.25);
+  background: rgba(255,255,255,.03) !important;
+  border: 1px solid rgba(255,255,255,.07) !important;
+  border-radius: 16px !important;
+  -webkit-backdrop-filter: blur(18px) saturate(1.1);
+  backdrop-filter: blur(18px) saturate(1.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.05) !important;
 }
-/* sections: airy, quiet labels */
-.fl-sec {margin: 24px 0 8px !important; font-size: 12px; letter-spacing: .06em; text-transform: uppercase;
-         color: rgba(198,194,218,.5) !important;}
-.fl-value, .fl-score-num {color: #f3f1fb !important;}   /* crisp but not harsh white */
-/* purple accents (replacing the old blue) */
-.fl-grade {background: rgba(124,92,255,.2) !important; color: #c9bdff !important;}
-.fl-bar i {background: rgba(124,92,255,.16) !important;}
-.fl-bar i b {background: #a78bfa !important;}
-.fl-coach {border-left: 3px solid #a78bfa !important;}
-.lb-grade {color: #c9bdff !important;}
-.lb-rank1 {border-color: rgba(124,92,255,.45) !important;
-           background: linear-gradient(0deg, rgba(124,92,255,.12), transparent) !important;}
-/* verdict colours — brighter on dark */
-.fl-ok {background: rgba(52,211,153,.14) !important; color: #6ee7b7 !important;}
-.fl-warn {background: rgba(245,158,11,.16) !important; color: #fcd34d !important;}
-.fl-bad {background: rgba(248,113,113,.15) !important; color: #fca5a5 !important;}
-/* primary button in purple */
-button.primary, .gr-button-primary, .primary {
-  background: linear-gradient(180deg, #8b6cff, #6f4dff) !important;
-  border: 1px solid rgba(150,130,255,.45) !important; color: #fff !important;}
-/* generous mobile spacing */
+/* section headers are plain text, NOT cards (removes the big empty boxes) */
+.block:has(.fl-sec), .block:has(> .fl-cap) {
+  background: transparent !important; border: none !important; box-shadow: none !important;
+  backdrop-filter: none !important; -webkit-backdrop-filter: none !important; padding: 0 !important;}
+.fl-sec {margin: 22px 2px 8px !important; font-size: 11.5px; letter-spacing: .12em;
+         text-transform: uppercase; font-weight: 600; color: rgba(172,170,182,.5) !important;}
+.block-title, .block-info {background: transparent !important; color: rgba(172,170,182,.62) !important;
+         font-weight: 500 !important;}
+/* radio/checkbox SELECTED: subtle purple chip, readable text */
+label.selected {background: rgba(139,123,240,.2) !important;
+         border: 1px solid rgba(139,123,240,.55) !important; color: #e7e3ff !important;}
+/* primary button: graphite glass, purple hairline */
+button.primary, .gr-button-primary {background: rgba(255,255,255,.05) !important;
+         border: 1px solid rgba(139,123,240,.4) !important; color: #e7e3ff !important;}
+button.primary:hover, .gr-button-primary:hover {background: rgba(139,123,240,.18) !important;}
+/* secondary buttons + dataframe: dark, never white */
+button.secondary, .gr-button.secondary {background: rgba(255,255,255,.05) !important;
+         border: 1px solid rgba(255,255,255,.1) !important; color: #d8d6e2 !important;}
+thead th, .table thead th {background: rgba(255,255,255,.05) !important;
+         color: rgba(180,178,190,.85) !important; border-color: rgba(255,255,255,.08) !important;}
+tbody td, .table td {background: transparent !important; border-color: rgba(255,255,255,.06) !important;}
+/* readable headline numbers + accents */
+.fl-value, .fl-score-num {color: #f1f0f6 !important;}
+.fl-grade {background: rgba(139,123,240,.18) !important; color: #c9c0ff !important;}
+.fl-bar i {background: rgba(139,123,240,.14) !important;}
+.fl-bar i b {background: #8b7bf0 !important;}
+.fl-coach {border-left: 3px solid #8b7bf0 !important;}
+.lb-grade {color: #c9c0ff !important;}
+.lb-rank1 {border-color: rgba(139,123,240,.4) !important;
+         background: linear-gradient(0deg, rgba(139,123,240,.1), transparent) !important;}
+/* verdict — readable on dark */
+.fl-ok {background: rgba(52,211,153,.13) !important; color: #6ee7b7 !important;}
+.fl-warn {background: rgba(245,158,11,.14) !important; color: #fcd34d !important;}
+.fl-bad {background: rgba(248,113,113,.14) !important; color: #fca5a5 !important;}
+/* active tab: light text, purple underline */
+.tab-nav button.selected {color: #d7d2ff !important; border-bottom-color: #8b7bf0 !important;}
+/* mobile spacing */
 @media (max-width: 600px) {
-  .fl-card, .fl-score, .fl-coach, .fl-verdict {padding: 16px 18px !important;}
-  .fl-sec {margin: 20px 0 7px !important;}
+  .gradio-container {padding: 0 10px !important;}
+  .fl-card, .fl-score, .fl-coach, .fl-verdict {padding: 16px !important;}
 }
 """
 
