@@ -709,7 +709,8 @@ with gr.Blocks(title="Form Lab") as demo:
                   [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
                    frame0_state, skel_in],
                   [video_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
-                   report_out, reps_table, mcv_out, path_out, csv_out])
+                   report_out, reps_table, mcv_out, path_out, csv_out],
+                  show_progress_on=[video_out])   # one progress bar (on the video), not one per output
     refresh_btn.click(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     history_tab.select(load_history, [metric_in, hist_lift], [hist_table, trend_out])
     board_tab.select(load_board, [board_by, board_lift], board_out)
