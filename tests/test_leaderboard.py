@@ -33,6 +33,18 @@ def test_leaderboard_by_weight_ranks_by_heaviest(tmp_path):
     assert lb[0]["bar_load_kg"] == 140 and lb[0]["score"] == 70
 
 
+def test_leaderboard_by_dots_ranks_pound_for_pound(tmp_path):
+    """DOTS ranks strength-for-bodyweight, NOT absolute load: the lighter lifter with the higher
+    DOTS outranks the heavier absolute lift."""
+    db = str(tmp_path / "h.db")
+    history.save_run(db, {**_rec("Big", "deadlift", 300, 90), "bodyweight_kg": 140, "dots": 95.0})
+    history.save_run(db, {**_rec("Lil", "deadlift", 200, 90), "bodyweight_kg": 70, "dots": 110.0})
+    lb = history.leaderboard(db, by="dots")
+    assert [r["lifter_name"] for r in lb] == ["Lil", "Big"]      # 110 DOTS > 95, despite 200 < 300 kg
+    assert lb[0]["dots"] == 110.0 and lb[0]["bar_load_kg"] == 200  # best-DOTS row carries its load
+    assert lb[0]["rank"] == 1
+
+
 def test_unvalidated_lifts_are_excluded(tmp_path):
     db = str(tmp_path / "h.db")
     history.save_run(db, _rec("Ann", "squat", 120, 92, validated=0))

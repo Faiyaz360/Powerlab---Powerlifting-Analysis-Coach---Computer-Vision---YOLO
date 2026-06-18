@@ -492,13 +492,21 @@ def _leaderboard_html(rows: list, by: str) -> str:
         medal = _MEDALS.get(rank, f"#{rank}")
         weight = r.get("bar_load_kg")
         sc_val = r.get("score")
+        dots_val = r.get("dots")
+        bw = r.get("bodyweight_kg")
+        lift_txt = escape(str(r.get("lift", "")))
         if by == "Score":
             primary = f"{sc_val:.0f}<span class='fl-unit'>/100</span>" if sc_val is not None else "—"
-            sub = f"{weight:.0f} kg · {escape(str(r.get('lift', '')))}" if weight else escape(str(r.get("lift", "")))
-        else:
+            sub = f"{weight:.0f} kg · {lift_txt}" if weight else lift_txt
+        elif by == "DOTS":
+            primary = f"{dots_val:.0f}<span class='fl-unit'> DOTS</span>" if dots_val is not None else "—"
+            bits = [f"{weight:.0f} kg" if weight else "", f"{bw:.0f} kg BW" if bw else "", lift_txt]
+            sub = " · ".join(b for b in bits if b)
+        else:  # Weight
             primary = f"{weight:.0f}<span class='fl-unit'> kg</span>" if weight else "—"
-            sub = f"score {sc_val:.0f} · {escape(str(r.get('lift', '')))}" if sc_val is not None else escape(str(r.get("lift", "")))
-        dots = f" · DOTS {r['dots']:.0f}" if r.get("dots") else ""
+            sub = f"score {sc_val:.0f} · {lift_txt}" if sc_val is not None else lift_txt
+        # DOTS is the primary on its own board -> don't repeat it in the subtitle
+        dots = f" · DOTS {dots_val:.0f}" if (dots_val and by != "DOTS") else ""
         grade = escape(str(r.get("grade") or ""))
         items.append(
             f"<div class='lb-row lb-rank{min(rank, 4)}'>"
@@ -513,7 +521,7 @@ def _leaderboard_html(rows: list, by: str) -> str:
 
 def load_board(by: str, lift: str):
     """Render the leaderboard ranked by score or by weight, optionally filtered to one lift."""
-    rows = history.leaderboard(DB_PATH, by="score" if by == "Score" else "weight",
+    rows = history.leaderboard(DB_PATH, by={"Score": "score", "Weight": "weight", "DOTS": "dots"}.get(by, "score"),
                                lift=lift or None, limit=100)
     return _leaderboard_html(rows, by)
 
@@ -1027,10 +1035,11 @@ with gr.Blocks(title="PowerLab") as demo:
         lv_chart = gr.Plot(label="Load-velocity profile", show_label=False, elem_classes="fl-narrow")
     with gr.Tab("Leaderboard") as board_tab:
         gr.Markdown("🏆 **Leaderboard** — each lifter's best validated lift. "
-                    "**Score** = how well you lifted (/100) · **Weight** = how much. "
+                    "**Score** = how well you lifted (/100) · **Weight** = how much · "
+                    "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
                     "Only side-on, legal lifts (with a name + weight) count.")
         with gr.Row():
-            board_by = gr.Radio(["Score", "Weight"], value="Score", label="Rank by")
+            board_by = gr.Radio(["Score", "Weight", "DOTS"], value="Score", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")
         board_refresh = gr.Button("Refresh")
         board_out = gr.HTML(elem_classes="fl-narrow")

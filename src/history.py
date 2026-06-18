@@ -169,16 +169,21 @@ def leaderboard(db_path: str, by: str = "score", lift: str | None = None,
     """Ranked best-per-lifter board over VALIDATED lifts only.
 
     ``by='score'`` ranks by each lifter's best execution score; ``by='weight'`` by their heaviest
-    lift. One row per lifter (their single best for that board; SQLite returns the matching row's
-    other columns alongside the MAX). Names are grouped case-insensitively. Optional ``lift`` filter.
+    lift; ``by='dots'`` by DOTS (strength relative to bodyweight, sex-adjusted — pound-for-pound).
+    One row per lifter (their single best for that board; SQLite returns the matching row's other
+    columns alongside the MAX). Names are grouped case-insensitively. Optional ``lift`` filter.
     Each returned dict gains a 1-based ``rank``.
     """
-    if by not in ("score", "weight"):
+    rank_cols = {"score": "score", "weight": "bar_load_kg", "dots": "dots"}
+    if by not in rank_cols:
         raise ValueError(f"Unknown leaderboard sort: {by}")
     init_db(db_path)
-    rank_col = "score" if by == "score" else "bar_load_kg"
-    other_col = "bar_load_kg" if by == "score" else "score"   # carried along as a bare column
-    cols = ["lifter_name", "lift", "sex", "bodyweight_kg", "dots", "grade", "created_at", other_col]
+    rank_col = rank_cols[by]
+    # carry every display column EXCEPT the ranked one (it returns via MAX(...) AS rank_col), so each
+    # board can still show the others (load + bodyweight + dots) in the row subtitle.
+    base = ["lifter_name", "lift", "sex", "bodyweight_kg", "score", "bar_load_kg", "dots",
+            "grade", "created_at"]
+    cols = [c for c in base if c != rank_col]
     sql = (f"SELECT {', '.join(cols)}, MAX({rank_col}) AS {rank_col} FROM runs "
            "WHERE validated = 1 AND lifter_name IS NOT NULL AND TRIM(lifter_name) != '' "
            f"AND {rank_col} IS NOT NULL")

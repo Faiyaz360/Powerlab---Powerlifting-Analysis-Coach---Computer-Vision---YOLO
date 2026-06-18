@@ -31,6 +31,17 @@ def test_leaderboard_html_empty_state():
     assert "No validated lifts" in app._leaderboard_html([], "Score")
 
 
+def test_leaderboard_html_dots_board_headlines_dots():
+    """The DOTS board shows DOTS as the primary number + bodyweight in the subtitle (not a
+    duplicate DOTS suffix)."""
+    rows = [{"rank": 1, "lifter_name": "Lil", "lift": "deadlift", "bar_load_kg": 200.0,
+             "score": 90.0, "grade": "A", "dots": 110.0, "bodyweight_kg": 70}]
+    html = app._leaderboard_html(rows, "DOTS")
+    assert "110" in html and "DOTS" in html        # DOTS is the headline
+    assert "70 kg BW" in html                       # bodyweight shown for context
+    assert html.count("DOTS") == 1                  # not repeated as a subtitle suffix
+
+
 def test_load_board_end_to_end(tmp_path, monkeypatch):
     db = str(tmp_path / "h.db")
     monkeypatch.setattr(app, "DB_PATH", db)
