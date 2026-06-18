@@ -5,7 +5,8 @@ on a squat than a deadlift, and far harder on a bench (people deadlift > squat >
 gets its own bands, calibrated to that lift's IPF (drug-tested) world records:
   - deadlift ceiling ~270 single-lift DOTS (Jessica Buettner 261.5 kg @ 67 kg ~= 271)
   - squat    ceiling ~250 (Austin Perkins 341 kg @ 74 kg ~= 247, Sara Naldi 197.5 kg @ 57 kg ~= 226)
-  - bench    much lower (raw records sit well under squat/DL DOTS) — provisional until Phase 6.
+  - bench    ceiling ~165 (Kosei Yokoyama 225.5 kg @ 74 kg ~= 163, Jonathan Cayco 246 kg @ 93 kg ~= 157)
+             — bands ready for when a bench pipeline (Phase 6) exists.
 A 3-lift TOTAL is a different beast (elite ~600-700; Kristy Hawkins 711) and gets its OWN scale, used
 once a total board exists. HEURISTIC + CALIBRATABLE.
 """
@@ -17,7 +18,7 @@ TIERS = ["Beginner", "Intermediate", "Advanced", "Legendary", "Godly"]
 _CUTS = {
     "deadlift": [0, 85, 135, 185, 230],
     "squat":    [0, 80, 125, 170, 215],
-    "bench":    [0, 50, 85, 120, 160],    # provisional — recalibrate when bench (Phase 6) ships
+    "bench":    [0, 55, 85, 115, 140],    # IPF bench ceiling ~165 (Yokoyama 225.5@74 ~= 163)
     "total":    [0, 300, 400, 500, 600],  # 3-lift DOTS — SEPARATE scale, for a future total board
 }
 _FALLBACK = _CUTS["deadlift"]             # unknown lift -> deadlift bands

@@ -29,6 +29,13 @@ def test_unknown_lift_falls_back_to_deadlift():
     assert ss.tier(150, "curl")["tier"] == ss.tier(150, "deadlift")["tier"]
 
 
+def test_bench_has_its_own_lower_scale():
+    """Bench DOTS ceilings are ~165 (vs ~270 deadlift), so bench bands sit far lower."""
+    assert ss.tier(150, "bench")["tier"] == "Godly"        # elite bench (>= 140)
+    assert ss.tier(150, "deadlift")["tier"] == "Advanced"  # same DOTS is only Advanced on a deadlift
+    assert ss.tier(100, "bench")["tier"] == "Advanced"     # bench [85, 115)
+
+
 def test_total_has_its_own_scale():
     """A 3-lift total uses the separate total bands, not single-lift ones."""
     assert ss.tier(450, "total")["tier"] == "Advanced"         # total [0,300,400,500,600]
