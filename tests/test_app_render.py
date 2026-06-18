@@ -1,6 +1,7 @@
 """Score banner + leaderboard HTML rendering, including XSS-escaping of user-supplied names."""
 import app
 from src import history
+from src import strength_standards as ss
 
 
 def _sc(validated=True):
@@ -43,19 +44,31 @@ def test_leaderboard_html_dots_board_headlines_dots():
 
 
 def test_leaderboard_dots_board_shows_strength_tier_chip():
-    """On the DOTS board the gamified strength tier replaces the execution grade chip."""
+    """On the DOTS board the gamified (DOTS-based) tier replaces the execution grade chip."""
     rows = [{"rank": 1, "lifter_name": "Lil", "lift": "deadlift", "bar_load_kg": 140.0,
-             "score": 90.0, "grade": "A", "dots": 110.0, "bodyweight_kg": 70, "sex": "male"}]
+             "score": 90.0, "grade": "A", "dots": 95.0, "bodyweight_kg": 70, "sex": "male"}]
     html = app._leaderboard_html(rows, "DOTS")
-    assert "lb-tier" in html and "Intermediate" in html   # 140/70 = 2.0x DL (male) -> Intermediate
+    assert "lb-tier" in html and "Advanced" in html        # DOTS 95 -> Advanced band
     assert "lb-grade" not in html                          # tier replaces the grade on this board
 
 
-def test_tier_card_colours_label_and_progress():
-    ti = {"tier": "Advanced", "idx": 3, "ratio": 2.0, "next": "Elite", "to_next_kg": 50.0, "pct": 0.5}
-    html = app._tier_card(ti)
-    assert "Advanced" in html and "2×BW" in html and "50 kg to Elite" in html
-    assert app._TIER_HEX[3] in html                        # tier-coloured
+def test_leaderboard_godly_chip_is_animated():
+    """A top-tier DOTS gets the animated shimmer chip + sparkle."""
+    rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 320.0,
+             "score": 96.0, "grade": "S", "dots": 160.0, "bodyweight_kg": 80, "sex": "male"}]
+    html = app._leaderboard_html(rows, "DOTS")
+    assert "lb-tier-godly" in html and "Godly" in html and "✨" in html
+
+
+def test_tier_card_shows_dots_and_progress():
+    html = app._tier_card(ss.tier(95))                     # Advanced, 15 DOTS to Legendary
+    assert "Advanced" in html and "95 DOTS" in html and "15 to Legendary" in html
+    assert app._TIER_HEX[2] in html                        # Advanced colour
+
+
+def test_tier_card_godly_is_animated():
+    html = app._tier_card(ss.tier(160))
+    assert "fl-tier-godly" in html and "Godly" in html and "✨" in html
 
 
 def test_tier_card_empty_when_no_tier():

@@ -191,7 +191,11 @@ def leaderboard(db_path: str, by: str = "score", lift: str | None = None,
     if lift:
         sql += " AND lift = ?"
         params.append(lift)
-    sql += f" GROUP BY lifter_name COLLATE NOCASE ORDER BY {rank_col} DESC LIMIT ?"
+    # tie-break a draw on the ranked column by another metric (the screenshot's two 96/100 lifters):
+    # Score ties break on DOTS, DOTS/Weight ties break on Score; created_at keeps it deterministic.
+    tiebreak = {"score": "dots", "weight": "score", "dots": "score"}[by]
+    sql += (f" GROUP BY lifter_name COLLATE NOCASE "
+            f"ORDER BY {rank_col} DESC, {tiebreak} DESC, created_at ASC LIMIT ?")
     params.append(limit)
     with _connect(db_path) as conn:
         rows = [dict(row) for row in conn.execute(sql, params).fetchall()]

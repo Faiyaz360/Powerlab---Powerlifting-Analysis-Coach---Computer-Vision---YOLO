@@ -149,6 +149,18 @@ footer {display: none !important;}
 .lb-grade {font-size: 13px; font-weight: 700; color: #2b82dd; min-width: 26px; text-align: center;}
 .lb-tier {font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
           padding: 3px 9px; border: 1px solid; border-radius: 999px; white-space: nowrap;}
+@keyframes godlyShift {0% {background-position: 0% 50%;} 50% {background-position: 100% 50%;}
+                       100% {background-position: 0% 50%;}}
+@keyframes godlyGlow {0%, 100% {box-shadow: 0 0 4px rgba(245,197,24,.5);}
+                      50% {box-shadow: 0 0 12px rgba(245,160,24,.95);}}
+.lb-tier-godly {color: #1b1306; border: none; font-weight: 900;
+  background: linear-gradient(90deg, #ffd700, #ff8a00, #ff3cac, #7a5cff, #00e6ff, #ffd700);
+  background-size: 300% 100%;
+  animation: godlyShift 4s linear infinite, godlyGlow 2.2s ease-in-out infinite;}
+.fl-tier-godly {font-weight: 900;
+  background: linear-gradient(90deg, #ffd700, #ff8a00, #ff3cac, #7a5cff, #00e6ff, #ffd700);
+  background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
+  animation: godlyShift 4s linear infinite;}
 .lb-primary {font-size: 22px; font-weight: 700; color: var(--body-text-color);}
 .lb-primary .fl-unit {font-size: 13px;}
 .lb-rank1 {border-color: rgba(245,197,24,.55); background: linear-gradient(0deg, rgba(245,197,24,.10), transparent);}
@@ -361,12 +373,13 @@ def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
     bv = [v for v in (a.get("bar_velocity") or []) if v]
     reps = len(bv)
     last_mcv = bv[-1].get("mean_velocity_ms") if bv else None
+    d = am.dots(bar_load_kg, bodyweight_kg, sex)
     return {
-        "dots": am.dots(bar_load_kg, bodyweight_kg, sex),
+        "dots": d,
         "e1rm": am.est_1rm(bar_load_kg, reps, last_mcv, a["lift"]),
         "power": am.peak_power_w(bar_load_kg, peak),
         "rpe": am.velocity_to_rpe(last_mcv, a["lift"]),
-        "tier": ss.tier(bar_load_kg, bodyweight_kg, sex, a["lift"]),
+        "tier": ss.tier(d),                          # tier follows DOTS (already bodyweight + sex adjusted)
     }
 
 
@@ -429,18 +442,22 @@ def _cards_html(a: dict, adv: dict) -> str:
     return f"<div class='fl-grid'>{''.join(cards)}</div>"
 
 
-_TIER_HEX = ["#8a94a6", "#3aa0ff", "#22c55e", "#f59e0b", "#eab308"]  # Beginner..Elite chip colours
+_TIER_HEX = ["#8a94a6", "#22c55e", "#3aa0ff", "#a855f7", "#f5c518"]  # Beginner/Intermediate/Advanced/
+#           grey       green      blue       purple     gold   Legendary/Godly (Godly draws animated)
 
 
 def _tier_card(ti) -> str:
-    """Gamified strength-tier card: the tier label coloured by level, with ×BW and 'N kg to {next}'."""
+    """Gamified strength-tier card (follows DOTS): the tier label coloured by level — the top tier
+    'Godly' gets an animated gold/rainbow shimmer + sparkle — with the DOTS and 'N to {next}'."""
     if not ti:
         return _card("Strength tier", None)
-    col = _TIER_HEX[ti["idx"]]
-    tail = f" · {ti['to_next_kg']:g} kg to {ti['next']}" if ti["next"] else " · top tier"
+    tail = f" · {ti['to_next']:g} to {ti['next']}" if ti["next"] else " · max"
+    if ti["idx"] == 4:                               # Godly = animated gradient text + sparkle
+        head = f"<span class='fl-tier-godly'>✨ {ti['tier']}</span>"
+    else:
+        head = f"<span style='color:{_TIER_HEX[ti['idx']]}'>{ti['tier']}</span>"
     return (f"<div class='fl-card'><span class='fl-label'>Strength tier</span>"
-            f"<span class='fl-value' style='color:{col}'>{ti['tier']}"
-            f"<span class='fl-unit'> {ti['ratio']:g}×BW{tail}</span></span></div>")
+            f"<span class='fl-value'>{head}<span class='fl-unit'> {ti['dots']:g} DOTS{tail}</span></span></div>")
 
 
 def _strength_html(s) -> str:
@@ -528,11 +545,14 @@ def _leaderboard_html(rows: list, by: str) -> str:
         grade = escape(str(r.get("grade") or ""))
         chip = f"<span class='lb-grade'>{grade}</span>"            # execution grade by default
         if by == "DOTS":                                          # strength board -> show the tier
-            ti = ss.tier(weight, bw, r.get("sex"), r.get("lift"))
+            ti = ss.tier(dots_val)                                # tier follows DOTS
             if ti:
-                col = _TIER_HEX[ti["idx"]]
-                chip = (f"<span class='lb-tier' style='color:{col};border-color:{col}66'>"
-                        f"{escape(ti['tier'])}</span>")
+                if ti["idx"] == 4:                                # Godly = animated shimmer chip
+                    chip = f"<span class='lb-tier lb-tier-godly'>✨ {escape(ti['tier'])}</span>"
+                else:
+                    col = _TIER_HEX[ti["idx"]]
+                    chip = (f"<span class='lb-tier' style='color:{col};border-color:{col}66'>"
+                            f"{escape(ti['tier'])}</span>")
         items.append(
             f"<div class='lb-row lb-rank{min(rank, 4)}'>"
             f"<span class='lb-medal'>{medal}</span>"

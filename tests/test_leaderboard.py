@@ -45,6 +45,24 @@ def test_leaderboard_by_dots_ranks_pound_for_pound(tmp_path):
     assert lb[0]["rank"] == 1
 
 
+def test_leaderboard_score_tie_breaks_on_dots(tmp_path):
+    """Two lifters level on score (the screenshot's 96 vs 96) -> the higher DOTS wins."""
+    db = str(tmp_path / "h.db")
+    history.save_run(db, {**_rec("Ann", "squat", 100, 90), "dots": 95.0})
+    history.save_run(db, {**_rec("Bo", "squat", 120, 90), "dots": 110.0})    # same score, higher DOTS
+    lb = history.leaderboard(db, by="score")
+    assert [r["lifter_name"] for r in lb] == ["Bo", "Ann"]
+
+
+def test_leaderboard_dots_tie_breaks_on_score(tmp_path):
+    """Level on DOTS -> the better execution score wins."""
+    db = str(tmp_path / "h.db")
+    history.save_run(db, {**_rec("Ann", "squat", 100, 80), "dots": 100.0})
+    history.save_run(db, {**_rec("Bo", "squat", 120, 92), "dots": 100.0})    # same DOTS, higher score
+    lb = history.leaderboard(db, by="dots")
+    assert [r["lifter_name"] for r in lb] == ["Bo", "Ann"]
+
+
 def test_unvalidated_lifts_are_excluded(tmp_path):
     db = str(tmp_path / "h.db")
     history.save_run(db, _rec("Ann", "squat", 120, 92, validated=0))
