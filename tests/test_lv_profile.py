@@ -4,6 +4,15 @@ import math
 from src import lv_profile as lv
 
 
+def test_fit_degenerate_velocities_is_not_a_perfect_fit():
+    # distinct loads but identical velocities -> no real load-velocity relationship.
+    # R2 must NOT read 1.0 (a degenerate flat fit was being reported as perfect).
+    p = lv.fit_profile([(100, 0.5), (120, 0.5), (140, 0.5)])
+    assert p is not None
+    assert p["slope"] == 0.0
+    assert p["r2"] == 0.0
+
+
 def test_fit_perfect_line():
     # v drops 0.2 m/s per 20 kg -> slope -0.01, intercept 1.8
     p = lv.fit_profile([(100, 0.8), (120, 0.6), (140, 0.4)])

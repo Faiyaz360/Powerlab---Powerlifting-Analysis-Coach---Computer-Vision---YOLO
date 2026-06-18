@@ -35,7 +35,9 @@ def fit_profile(points: list[tuple]) -> dict | None:
     intercept = my - slope * mx
     ss_tot = sum((y - my) ** 2 for y in ys)
     ss_res = sum((y - (slope * x + intercept)) ** 2 for x, y in zip(xs, ys))
-    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 1.0
+    # ss_tot == 0 means every velocity is identical -> no real load-velocity relationship; that's a
+    # degenerate (flat) fit, NOT a perfect one, so report r2 = 0 rather than a misleading 1.0.
+    r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0.0
     return {"slope": slope, "intercept": intercept, "r2": r2, "n": n,
             "load_min": min(xs), "load_max": max(xs)}
 
