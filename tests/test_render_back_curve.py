@@ -13,6 +13,15 @@ def test_back_curve_paints_spine_colour_along_the_points():
     assert painted, "back-curve polyline/markers should paint SPINE-coloured pixels"
 
 
+def test_back_curve_colours_a_bend_warm():
+    """A sharp bend paints a warm (reddish) segment; a straight stretch stays violet."""
+    frame = np.zeros((400, 300, 3), dtype=np.uint8)
+    curve = [(100, 100), (100, 150), (100, 200), (150, 200), (200, 200)]   # ~90° corner at index 2
+    render._draw_back_curve(frame, curve, None)
+    warm = np.any((frame[:, :, 2] > 200) & (frame[:, :, 0] < 80))          # high R + low B = hot
+    assert warm, "the bend should colour a warm/red segment"
+
+
 def test_spine_curve_returns_none_without_extractor():
     """No extractor (feature off / model missing) -> None, so the caller falls back to Stage 1."""
     lm = np.zeros((1, 33, 3), dtype=float)

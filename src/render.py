@@ -364,12 +364,29 @@ def _spine_curve(extractor, frame, lm, f, side, region, bar_xy, plate_r):
     return spinemod.smooth(pts) if pts else None
 
 
+_CURV_FULL_DEG = 25.0      # local bend (deg) at/above which a curve segment is fully "hot" (red)
+
+
+def _curv_color(deg):
+    """Local-curvature heat colour (BGR): SPINE violet (straight) -> red (a sharp bend). VISUAL ONLY
+    — it shows how much the back outline bends locally, NOT a rounding verdict."""
+    t = 0.0 if deg < 0 else 1.0 if deg > _CURV_FULL_DEG else deg / _CURV_FULL_DEG
+    b, g, r = SPINE                                  # (255, 100, 210) violet at t=0 -> (0,0,255) red
+    return (int(b * (1 - t)), int(g * (1 - t)), int(r + (255 - r) * t))
+
+
 def _draw_back_curve(frame, curve, lean_deg):
-    """Stage 2a: the back's actual SILHOUETTE curve (violet polyline) + the live lean angle — drawn
-    instead of the straight Stage-1 line when the silhouette is available."""
+    """Spine 2b (visual-only): the back's SILHOUETTE curve, each segment COLOURED by its local
+    curvature — violet where the back is straight, warming to red where it bends most (so the lower
+    back lights up when it rounds). HONEST SCOPE: a picture of the silhouette's bend, not a verdict —
+    no threshold, no fault. Plus the live lean angle. Drawn instead of the straight Stage-1 line."""
     pts = np.asarray(curve, np.int32)
     s = max(0.5, frame.shape[1] / 1300.0)
-    cv2.polylines(frame, [pts], False, SPINE, max(2, int(3 * s)), cv2.LINE_AA)
+    th = max(2, int(3 * s))
+    curv = spinemod.curvature(curve)                 # per-point local turning angle (degrees)
+    for i in range(len(pts) - 1):
+        cv2.line(frame, tuple(pts[i]), tuple(pts[i + 1]),
+                 _curv_color(max(curv[i], curv[i + 1])), th, cv2.LINE_AA)
     cv2.circle(frame, tuple(pts[0]), max(3, int(4 * s)), SPINE, -1)
     cv2.circle(frame, tuple(pts[-1]), max(3, int(4 * s)), SPINE, -1)
     if lean_deg is not None and not np.isnan(lean_deg):

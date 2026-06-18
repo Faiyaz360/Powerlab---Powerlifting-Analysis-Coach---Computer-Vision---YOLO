@@ -87,6 +87,31 @@ def smooth(pts, k=3):
     return out
 
 
+def curvature(pts):
+    """Per-point local turning angle (degrees) along the contour — how sharply the back outline
+    changes direction at each point. 0 = locally straight, larger = a sharper bend. The endpoints
+    have no defined turn, so they're 0. Pure; returns a list aligned with ``pts``.
+
+    It's an ANGLE (scale-free), so the values are stable regardless of how big the lifter is on
+    screen. HONEST SCOPE: this measures the silhouette's local bend — it is NOT a rounding verdict.
+    """
+    n = len(pts) if pts is not None else 0
+    if n < 3:
+        return [0.0] * n
+    a = np.asarray(pts, float)
+    out = [0.0]
+    for i in range(1, n - 1):
+        v1, v2 = a[i] - a[i - 1], a[i + 1] - a[i]
+        m1, m2 = float(np.hypot(*v1)), float(np.hypot(*v2))
+        if m1 < 1e-6 or m2 < 1e-6:
+            out.append(0.0)
+            continue
+        cos = max(-1.0, min(1.0, float(np.dot(v1, v2) / (m1 * m2))))
+        out.append(float(np.degrees(np.arccos(cos))))   # angle between successive segments
+    out.append(0.0)
+    return out
+
+
 class BackCurve:
     """Lazy MediaPipe selfie-segmenter that extracts the back silhouette contour.
 

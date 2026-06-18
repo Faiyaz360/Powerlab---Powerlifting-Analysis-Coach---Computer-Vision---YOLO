@@ -1058,8 +1058,8 @@ with gr.Blocks(title="PowerLab") as demo:
             skel_in = gr.Radio(["Side points", "All points", "None"], value="Side points",
                                label="Skeleton", info="Side = side-view joints · None = bar path only")
             spine_in = gr.Checkbox(value=False, label="Back-curve (experimental)",
-                                   info="Trace the back's silhouette instead of a straight line — "
-                                        "best on a clean side-on clip; adds a little processing time")
+                                   info="Trace the back's silhouette, coloured by how much it bends "
+                                        "(violet = straight → red = sharp) — best on a clean side-on clip")
             run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
         # --- results: verdict + score banner, centred video, then the stat-card grid (auto-reflows) ---

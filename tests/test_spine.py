@@ -64,6 +64,24 @@ def test_smooth_reduces_jaggedness_and_keeps_length():
     assert tv_out < tv_raw                   # smoother than the input
 
 
+def test_curvature_zero_on_a_straight_contour():
+    pts = [(0, i * 10) for i in range(6)]              # a straight vertical line
+    c = spine.curvature(pts)
+    assert len(c) == 6
+    assert all(abs(x) < 1e-6 for x in c)              # nothing bends -> all 0
+
+
+def test_curvature_peaks_at_a_bend():
+    pts = [(0, 0), (0, 10), (0, 20), (10, 20), (20, 20)]   # L-shape: ~90° corner at index 2
+    c = spine.curvature(pts)
+    assert c.index(max(c)) == 2 and max(c) > 80       # the corner is the sharpest point
+
+
+def test_curvature_short_input_is_safe():
+    assert spine.curvature([(1, 1), (2, 2)]) == [0.0, 0.0]
+    assert spine.curvature(None) == []
+
+
 def test_backcurve_unavailable_is_graceful():
     """No model file -> available() is False and curve() returns None (caller falls back to the
     straight Stage-1 line) — the pipeline never crashes on a segmentation problem."""
