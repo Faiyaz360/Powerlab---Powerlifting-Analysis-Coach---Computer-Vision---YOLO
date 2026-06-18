@@ -23,6 +23,30 @@ _CUTS = {
 _FALLBACK = _CUTS["deadlift"]             # unknown lift -> deadlift bands
 
 
+# IPF open weight-class upper limits (kg). Above the top limit = the "+" superheavy class.
+_WEIGHT_CLASSES = {
+    "male":   [59, 66, 74, 83, 93, 105, 120],
+    "female": [47, 52, 57, 63, 69, 76, 84],
+}
+
+
+def weight_class(bodyweight_kg, sex) -> str | None:
+    """IPF open weight class for a bodyweight + sex, e.g. '83 kg' or '120 kg+'. None if unknown.
+
+    A lifter sits in the lightest class whose limit they don't exceed (74 kg -> '74 kg', 80 kg ->
+    '83 kg'); above the heaviest limit is the superheavy '120 kg+' / '84 kg+'.
+    """
+    if not bodyweight_kg:
+        return None
+    limits = _WEIGHT_CLASSES.get((sex or "").lower())
+    if not limits:
+        return None
+    for lim in limits:
+        if bodyweight_kg <= lim:
+            return f"{lim} kg"
+    return f"{limits[-1]} kg+"
+
+
 def tier(dots, lift=None) -> dict | None:
     """Tier from a single lift's DOTS, bracketed by THAT lift's bands, or None when DOTS is missing.
 

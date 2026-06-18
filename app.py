@@ -531,6 +531,20 @@ def _leaderboard_html(rows: list, by: str) -> str:
     if not rows:
         return ("<div class='fl-hint'>No validated lifts yet. Analyse a <b>side-on</b> lift with your "
                 "<b>name</b> and <b>lift weight</b> filled in, and pass depth/lockout, to claim a spot.</div>")
+    # Weight-class standing (DOTS board): each lifter's rank within their IPF class. Rows arrive
+    # DOTS-sorted, so a class group's order IS its rank. Keyed by id(r) for a per-row lookup.
+    class_of, class_rank = {}, {}
+    if by == "DOTS":
+        groups = {}
+        for r in rows:
+            cls = ss.weight_class(r.get("bodyweight_kg"), r.get("sex"))
+            class_of[id(r)] = cls
+            if cls:
+                groups.setdefault((str(r.get("sex")).lower(), cls), []).append(r)
+        for grp in groups.values():
+            for i, gr in enumerate(grp, 1):
+                class_rank[id(gr)] = (i, len(grp))
+
     items = []
     for r in rows:
         rank = r["rank"]
@@ -550,7 +564,9 @@ def _leaderboard_html(rows: list, by: str) -> str:
             sub = " · ".join(b for b in (load_txt, e1bit, lift_txt) if b)
         elif by == "DOTS":
             primary = f"{dots_val:.0f}<span class='fl-unit'> DOTS</span>" if dots_val is not None else "—"
-            bits = [load_txt, e1bit, f"{bw:.0f} kg BW" if bw else "", lift_txt]
+            cls, cr = class_of.get(id(r)), class_rank.get(id(r))
+            cls_bit = f"#{cr[0]}/{cr[1]} in {cls}" if (cls and cr) else ""   # rank within IPF class
+            bits = [load_txt, e1bit, f"{bw:.0f} kg BW" if bw else "", cls_bit, lift_txt]
             sub = " · ".join(b for b in bits if b)
         else:  # Weight
             primary = f"{weight:.0f}<span class='fl-unit'> kg</span>" if weight else "—"

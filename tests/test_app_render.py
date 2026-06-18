@@ -61,6 +61,18 @@ def test_leaderboard_row_shows_reps_and_e1rm():
     assert "142 kg × 3" in html and "e1RM 155" in html
 
 
+def test_leaderboard_shows_weight_class_rank():
+    """Two lifters in the same IPF class get ranked within it (#1/2, #2/2)."""
+    rows = [
+        {"rank": 1, "lifter_name": "A", "lift": "deadlift", "bar_load_kg": 200.0, "dots": 150.0,
+         "bodyweight_kg": 80, "sex": "male", "score": 90, "grade": "A"},
+        {"rank": 2, "lifter_name": "B", "lift": "deadlift", "bar_load_kg": 180.0, "dots": 130.0,
+         "bodyweight_kg": 82, "sex": "male", "score": 88, "grade": "A"},
+    ]
+    html = app._leaderboard_html(rows, "DOTS")
+    assert "#1/2 in 83 kg" in html and "#2/2 in 83 kg" in html   # both in the 83 kg class
+
+
 def test_leaderboard_godly_chip_is_animated():
     """A top-tier DOTS gets the animated shimmer chip + sparkle."""
     rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 380.0,

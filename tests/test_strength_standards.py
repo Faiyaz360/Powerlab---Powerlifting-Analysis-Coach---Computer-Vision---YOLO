@@ -41,3 +41,19 @@ def test_tier_order_matches_request():
 
 def test_missing_dots_is_none():
     assert ss.tier(None, "squat") is None
+
+
+def test_weight_class_picks_the_class():
+    assert ss.weight_class(80, "male") == "83 kg"        # 74 < 80 <= 83
+    assert ss.weight_class(74, "male") == "74 kg"        # exactly on the limit
+    assert ss.weight_class(82, "female") == "84 kg"
+
+
+def test_weight_class_superheavy():
+    assert ss.weight_class(125, "male") == "120 kg+"
+    assert ss.weight_class(90, "female") == "84 kg+"
+
+
+def test_weight_class_unknown_is_none():
+    assert ss.weight_class(None, "male") is None
+    assert ss.weight_class(80, "other") is None
