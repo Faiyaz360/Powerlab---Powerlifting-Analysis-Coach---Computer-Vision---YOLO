@@ -169,6 +169,9 @@ footer {display: none !important;}
                            50% {text-shadow: 0 0 9px rgba(245,184,32,.8);}}
 .fl-tier-legendary {color: #ffce5e; font-weight: 900;
   animation: legendTextGlow 2.6s ease-in-out infinite;}
+.fl-tierbar {display: block; height: 5px; border-radius: 3px; background: rgba(255,255,255,.10);
+  margin-top: 8px; overflow: hidden;}
+.fl-tierbar b {display: block; height: 100%; border-radius: 3px;}
 .lb-primary {font-size: 22px; font-weight: 700; color: var(--body-text-color);}
 .lb-primary .fl-unit {font-size: 13px;}
 .lb-rank1 {border-color: rgba(245,197,24,.55); background: linear-gradient(0deg, rgba(245,197,24,.10), transparent);}
@@ -466,8 +469,14 @@ def _tier_card(ti) -> str:
         head = f"<span class='fl-tier-legendary'>{ti['tier']}</span>"
     else:
         head = f"<span style='color:{_TIER_HEX[ti['idx']]}'>{ti['tier']}</span>"
+    # gamified progress bar toward the next tier (omitted at the top tier, which has no 'next')
+    bar = ""
+    if ti["next"]:
+        pct = int(round(ti["pct"] * 100))
+        bar = f"<span class='fl-tierbar'><b style='width:{pct}%;background:{_TIER_HEX[ti['idx']]}'></b></span>"
     return (f"<div class='fl-card'><span class='fl-label'>Strength tier</span>"
-            f"<span class='fl-value'>{head}<span class='fl-unit'> {ti['dots']:g} DOTS{tail}</span></span></div>")
+            f"<span class='fl-value'>{head}<span class='fl-unit'> {ti['dots']:g} DOTS{tail}</span></span>"
+            f"{bar}</div>")
 
 
 def _strength_html(s) -> str:

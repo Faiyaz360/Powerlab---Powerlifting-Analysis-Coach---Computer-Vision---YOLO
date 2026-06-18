@@ -106,6 +106,16 @@ def test_tier_card_godly_is_animated():
     assert "fl-tier-godly" in html and "Godly" in html and "✨" in html
 
 
+def test_tier_card_has_progress_bar_toward_next():
+    html = app._tier_card(ss.tier(150, "deadlift"))        # Advanced, 30% toward Legendary
+    assert "fl-tierbar" in html and "width:30%" in html
+
+
+def test_tier_card_no_bar_at_top_tier():
+    html = app._tier_card(ss.tier(240, "deadlift"))        # Godly has no next -> no bar
+    assert "fl-tierbar" not in html
+
+
 def test_tier_card_empty_when_no_tier():
     assert "—" in app._tier_card(None)
 
