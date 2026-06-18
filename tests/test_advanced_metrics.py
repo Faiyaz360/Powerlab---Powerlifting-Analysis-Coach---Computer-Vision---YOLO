@@ -85,11 +85,11 @@ def test_dots_none_without_weights():
 
 
 def test_est_1rm_uses_reps_and_last_rep_rpe():
-    # 120 kg x 7, last rep 0.30 m/s -> RPE 8 -> 2 in reserve -> 9 reps to failure -> Epley.
+    # 120 kg x 7, last rep 0.30 m/s -> RPE 9 -> 1 in reserve -> 8 reps to failure -> Brzycki.
     out = am.est_1rm(120.0, 7, 0.30, "squat")
-    assert round(out["e1rm_kg"]) == 156   # 120 * (1 + 9/30)
-    assert out["rpe"] == 8.0
-    assert out["confidence"] == "medium"
+    assert round(out["e1rm_kg"]) == 149   # 120 * 36/(37-8)
+    assert out["rpe"] == 9.0
+    assert out["confidence"] == "good"
 
 
 def test_est_1rm_good_confidence_near_failure():
@@ -112,5 +112,20 @@ def test_peak_power():
 
 
 def test_velocity_to_rpe_squat():
-    assert am.velocity_to_rpe(0.30, "squat") == 8.0
-    assert am.velocity_to_rpe(0.45, "squat") == 6.5
+    # RPE-10 anchored to the published squat 1RM MVT (~0.25-0.30 m/s).
+    assert am.velocity_to_rpe(0.30, "squat") == 9.0
+    assert am.velocity_to_rpe(0.45, "squat") == 7.0
+
+
+def test_velocity_to_rpe_deadlift_anchored_to_mvt():
+    assert am.velocity_to_rpe(0.15, "deadlift") == 10.0   # a true 1RM velocity -> RPE 10
+    assert am.velocity_to_rpe(0.23, "deadlift") == 8.0
+
+
+def test_est_1rm_true_deadlift_max_reads_rpe10_and_no_inflation():
+    # A near-1RM single deadlift moves at the published MVT (~0.15 m/s) -> RPE 10 (not 8.5), and
+    # e1RM equals the lifted load (Brzycki at 1 rep), not Epley's +3-8% over-read.
+    out = am.est_1rm(250.0, 1, 0.15, "deadlift")
+    assert out["rpe"] == 10.0
+    assert out["e1rm_kg"] == 250.0
+    assert out["confidence"] == "medium"   # deadlift velocity->1RM is least reliable (downgraded)

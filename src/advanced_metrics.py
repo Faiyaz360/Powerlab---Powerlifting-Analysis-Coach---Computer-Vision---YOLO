@@ -107,13 +107,13 @@ def dots(load_kg: float, bodyweight_kg: float, sex: str = "male") -> float | Non
     return round(load_kg * 500.0 / denom, 1)
 
 
-# generalized load-velocity %1RM model: pct = c + m*MCV   (CALIBRATABLE per lifter)
 def est_1rm(load_kg, reps, last_mcv, lift) -> dict | None:
     """Estimate 1RM from the SET: the rep count plus how close the LAST rep was to failure (its bar
-    speed -> RPE -> reps in reserve), via Epley on the projected reps-to-failure. Suits a normal
-    training set far better than reading a single rep's velocity off a fixed load-velocity curve.
+    speed -> RPE -> reps in reserve), via Brzycki on the projected reps-to-failure. Brzycki is
+    accurate in powerlifting's low-rep range and, unlike Epley, returns the lifted load itself for a
+    true single (Epley inflates a 1-rep max by 3.3%). Population RPE table — see _RPE_TABLE.
 
-    e.g. 120 kg x 7 with a last rep at RPE 8 -> 2 in reserve -> 9 reps to failure -> ~156 kg.
+    e.g. 120 kg x 7 with a last rep at RPE 8 -> 2 in reserve -> 9 reps to failure -> ~154 kg.
     """
     if not load_kg or not reps or last_mcv is None or lift not in _RPE_TABLE:
         return None
@@ -122,8 +122,10 @@ def est_1rm(load_kg, reps, last_mcv, lift) -> dict | None:
         return None
     rir = max(0.0, 10.0 - rpe)                        # reps left in reserve on the last rep
     reps_to_failure = reps + rir
-    e1rm = load_kg * (1.0 + reps_to_failure / 30.0)   # Epley
+    e1rm = load_kg * 36.0 / (37.0 - reps_to_failure)  # Brzycki (returns the load itself at 1 rep)
     conf = "good" if rir <= 1 else ("medium" if rir <= 3 else "low")
+    if lift == "deadlift" and conf == "good":
+        conf = "medium"   # deadlift is the least reliable lift for velocity->1RM (Hooper 2017)
     return {"e1rm_kg": round(e1rm, 1), "confidence": conf, "rpe": round(rpe, 1)}
 
 
@@ -134,10 +136,12 @@ def peak_power_w(load_kg: float, peak_velocity: float | None) -> float | None:
     return round(load_kg * 9.81 * peak_velocity, 1)
 
 
-# generalized MCV->RPE tables (ascending MCV, descending RPE)   (CALIBRATABLE)
+# MCV->RPE per lift, RPE-10 anchored to the published true-1RM mean-concentric velocity (MVT):
+# squat ~0.25-0.30, deadlift ~0.15-0.17 m/s (Helms 2017; Gonzalez-Badillo), ~0.04-0.05 m/s per RPE.
+# Population DEFAULTS — per-lifter calibration via lv_profile is the accurate long-term anchor.
 _RPE_TABLE = {
-    "squat": ([0.20, 0.25, 0.30, 0.40, 0.50], [10, 9, 8, 7, 6]),
-    "deadlift": ([0.10, 0.15, 0.20, 0.30, 0.40], [10, 9, 8, 7, 6]),
+    "squat": ([0.25, 0.30, 0.35, 0.45, 0.55], [10, 9, 8, 7, 6]),
+    "deadlift": ([0.15, 0.19, 0.23, 0.31, 0.39], [10, 9, 8, 7, 6]),
 }
 
 
