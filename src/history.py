@@ -14,7 +14,7 @@ _COLUMNS = [
     "sticking_pct", "bar_drift_cm", "bodyweight_kg", "bar_load_kg", "sex",
     "dots", "e1rm_kg", "peak_power_w", "est_rpe",
     "score", "grade", "validated",
-    "annotated_path", "metrics_json_path", "notes",
+    "annotated_path", "metrics_json_path", "notes", "ghost",
 ]
 
 # metrics allowed in trend() — whitelist prevents SQL injection via the column name
@@ -35,7 +35,7 @@ def _sql_type(col: str) -> str:
     if col in ("rep_count", "depth_pass", "validated"):
         return "INTEGER"
     if col in ("created_at", "video_name", "lifter_name", "lift", "confidence", "sex",
-               "grade", "annotated_path", "metrics_json_path", "notes"):
+               "grade", "annotated_path", "metrics_json_path", "notes", "ghost"):
         return "TEXT"
     return "REAL"
 
@@ -69,6 +69,18 @@ def save_run(db_path: str, record: dict) -> int:
             f"INSERT INTO runs ({', '.join(cols)}) VALUES ({placeholders})", values
         )
         return int(cur.lastrowid)
+
+
+def best_ghost(db_path: str, lifter: str, lift: str) -> str | None:
+    """The stored ghost blob of ``lifter``'s best validated ``lift`` (highest score) — what a new rep
+    is compared against in the ghost panel. None if they have no prior validated lift of this type."""
+    init_db(db_path)
+    sql = ("SELECT ghost FROM runs WHERE validated = 1 AND ghost IS NOT NULL "
+           "AND lifter_name = ? COLLATE NOCASE AND lift = ? "
+           "ORDER BY score DESC, created_at ASC LIMIT 1")
+    with _connect(db_path) as conn:
+        row = conn.execute(sql, (lifter, lift)).fetchone()
+    return row["ghost"] if row else None
 
 
 def list_runs(db_path: str, lift: str | None = None, lifter: str | None = None,

@@ -18,7 +18,7 @@ import numpy as np
 
 from src import advanced_metrics as am
 from src import barbell, charts, confidence as conf, history, marking, media, pipeline
-from src import lv_profile as lvmod, plate_dataset, score, share, strength_standards as ss
+from src import ghost, lv_profile as lvmod, plate_dataset, score, share, strength_standards as ss
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -750,8 +750,23 @@ def on_autodetect(frame0):
 
 
 @spaces.GPU(duration=120)
+def _ghost_panel(video_path, lm, kf, side, prior_blob, bar_xy):
+    """Render the ghost-compare panel (current rep vs the prior best) as RGB for the gr.Image, or
+    None when there's no prior best to compare against."""
+    if not prior_blob:
+        return None
+    cap = cv2.VideoCapture(str(video_path))
+    cap.set(cv2.CAP_PROP_POS_FRAMES, int(kf))
+    ok, frame = cap.read()
+    cap.release()
+    if not ok:
+        return None
+    img = ghost.draw_ghost_panel(frame, lm[kf], side, prior_blob, cur_bar=bar_xy)
+    return cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if img is not None else None
+
+
 def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, skel,
-            progress=gr.Progress()):
+            ghost_compare, progress=gr.Progress()):
     if not video_path:
         raise gr.Error("Upload a lift video first.")
     if not radius or radius <= 0:
@@ -789,9 +804,25 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     # A lift reaches the leaderboard only when it's validated (side-on + legal) AND attributable
     # (a name) with a weight to rank by.
     on_board = bool(sc and sc["validated"] and name_clean and bar_load)
-    history.save_run(DB_PATH, _summary_record(a, result, adv, name, c, s, bodyweight, sex, bar_load,
-                                              lifter_name=name_clean or None, sc=sc,
-                                              validated=int(on_board)))
+
+    # Ghost compare: pack this rep at the scored best rep's key frame; if asked + a prior best exists,
+    # render the panel BEFORE saving so we ghost against the PREVIOUS best, not this very run.
+    lm = a.get("pose_landmarks")
+    side = (a.get("series") or {}).get("side", "left")
+    rm = a.get("rep_metrics") or []
+    best_rep = (sc or {}).get("best_rep", 0)
+    kf = rm[best_rep]["badge_frame"] if (rm and 0 <= best_rep < len(rm)) else None
+    ghost_blob = (ghost.build_blob(lm, kf, side, a.get("bar_xy"))
+                  if (lm is not None and kf is not None) else None)
+    ghost_img = None
+    if ghost_compare and name_clean and kf is not None and lm is not None:
+        ghost_img = _ghost_panel(video_path, lm, kf, side,
+                                 history.best_ghost(DB_PATH, name_clean, lift), a.get("bar_xy"))
+
+    rec = _summary_record(a, result, adv, name, c, s, bodyweight, sex, bar_load,
+                          lifter_name=name_clean or None, sc=sc, validated=int(on_board))
+    rec["ghost"] = ghost_blob
+    history.save_run(DB_PATH, rec)
     _snapshot_db()   # persist the leaderboard to the mounted bucket (no-op if none)
     csv_path = _session_csv(a, sc, s, adv, name_clean, bar_load, name)
     report_md = Path(result["paths"]["report"]).read_text(encoding="utf-8")
@@ -799,7 +830,6 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
     # Share caption (cheap text). The Share-to-apps button shares the annotated video already on
     # screen + this caption, so no second clip is ever rendered (no extra GPU, nothing to fail).
     mcv, peak = _first_velocity(a)
-    rm = a.get("rep_metrics") or []
     legal_key = "depth_pass" if lift == "squat" else "lockout_pass"
     caption = share.share_caption({
         "lift": lift, "load": bar_load,
@@ -822,6 +852,7 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
         charts.bar_path(a),
         csv_path,
         caption,
+        ghost_img,
     )
 
 
@@ -1056,6 +1087,9 @@ with gr.Blocks(title="PowerLab") as demo:
                 seed_radius = gr.Slider(10, 300, value=60, step=1, label="Plate radius")
             skel_in = gr.Radio(["Side points", "All points", "None"], value="Side points",
                                label="Skeleton", info="Side = side-view joints · None = bar path only")
+            ghost_in = gr.Checkbox(value=False, label="Ghost compare (vs your best)",
+                                   info="Overlay this lift's key frame on your best-ever same lift — "
+                                        "needs your name + a prior logged lift of this type")
             run_btn = gr.Button("Analyse", variant="primary", size="lg")
 
         # --- results: verdict + score banner, centred video, then the stat-card grid (auto-reflows) ---
@@ -1067,6 +1101,9 @@ with gr.Blocks(title="PowerLab") as demo:
             gr.HTML("<div class='fl-cap'>bar speed: blue slow → red fast</div>")
         gr.HTML("<div class='fl-sec'>AI COACH</div>")
         coach_out = gr.HTML(elem_classes="fl-narrow")
+
+        with gr.Accordion("Ghost — you vs your best (tick 'Ghost compare' above first)", open=False):
+            ghost_out = gr.Image(show_label=False, elem_classes="fl-narrow")
 
         gr.HTML("<div class='fl-sec'>SHARE</div>")
         with gr.Column(elem_classes="fl-narrow"):
@@ -1148,9 +1185,9 @@ with gr.Blocks(title="PowerLab") as demo:
                    [seed_img, seed_cx, seed_cy, seed_radius, tap_state, seed_instr])
     run_btn.click(analyze,
                   [video_in, name_in, lift_in, bw_in, sex_in, load_in, seed_cx, seed_cy, seed_radius,
-                   frame0_state, skel_in],
+                   frame0_state, skel_in, ghost_in],
                   [video_out, coach_out, verdict_out, score_out, cards_out, strength_out, angle_out, vel_out,
-                   report_out, reps_table, mcv_out, path_out, csv_out, share_caption_box],
+                   report_out, reps_table, mcv_out, path_out, csv_out, share_caption_box, ghost_out],
                   show_progress_on=[video_out])   # one progress bar (on the video), not one per output
     webshare_btn.click(None, None, None, js=WEBSHARE_JS)   # client-side Web Share of the annotated video
     _hist_in = [metric_in, hist_lift, hist_lifter]
