@@ -9,7 +9,12 @@ touch higher than a squat at equal effort (heavier absolute load) — fine for a
 from __future__ import annotations
 
 TIERS = ["Beginner", "Intermediate", "Advanced", "Legendary", "Godly"]
-_CUTS = [0, 50, 80, 110, 140]          # minimum (single-lift) DOTS to REACH each tier
+# minimum (single-lift) DOTS to REACH each tier. Calibrated so the top stays aspirational: an
+# elite/world-class single lift reaches ~200-280 DOTS, so Godly (155+) leaves real headroom above
+# a strong national-level lifter — it isn't handed out for a merely-advanced lift. Roughly, on a
+# DEADLIFT these cuts land near 1x / 1.5x / 2x / 2.75x bodyweight (a squat needs a touch more; women
+# ~0.8x). HEURISTIC + CALIBRATABLE.
+_CUTS = [0, 40, 75, 110, 155]
 
 
 def tier(dots) -> dict | None:

@@ -540,16 +540,21 @@ def _leaderboard_html(rows: list, by: str) -> str:
         dots_val = r.get("dots")
         bw = r.get("bodyweight_kg")
         lift_txt = escape(str(r.get("lift", "")))
+        reps = r.get("rep_count")
+        e1rm = r.get("e1rm_kg")
+        # "142 kg × 3" so a multi-rep set doesn't read like a 1RM; e1RM is the estimated single.
+        load_txt = (f"{weight:.0f} kg" + (f" × {int(reps)}" if reps else "")) if weight else ""
+        e1bit = f"e1RM {e1rm:.0f}" if e1rm else ""
         if by == "Score":
             primary = f"{sc_val:.0f}<span class='fl-unit'>/100</span>" if sc_val is not None else "—"
-            sub = f"{weight:.0f} kg · {lift_txt}" if weight else lift_txt
+            sub = " · ".join(b for b in (load_txt, e1bit, lift_txt) if b)
         elif by == "DOTS":
             primary = f"{dots_val:.0f}<span class='fl-unit'> DOTS</span>" if dots_val is not None else "—"
-            bits = [f"{weight:.0f} kg" if weight else "", f"{bw:.0f} kg BW" if bw else "", lift_txt]
+            bits = [load_txt, e1bit, f"{bw:.0f} kg BW" if bw else "", lift_txt]
             sub = " · ".join(b for b in bits if b)
         else:  # Weight
             primary = f"{weight:.0f}<span class='fl-unit'> kg</span>" if weight else "—"
-            sub = f"score {sc_val:.0f} · {lift_txt}" if sc_val is not None else lift_txt
+            sub = " · ".join(b for b in (e1bit, f"score {sc_val:.0f}" if sc_val is not None else "", lift_txt) if b)
         # DOTS is the primary on its own board -> don't repeat it in the subtitle
         dots = f" · DOTS {dots_val:.0f}" if (dots_val and by != "DOTS") else ""
         grade = escape(str(r.get("grade") or ""))
@@ -1091,10 +1096,19 @@ with gr.Blocks(title="PowerLab") as demo:
         lv_readout = gr.HTML(elem_classes="fl-narrow")
         lv_chart = gr.Plot(label="Load-velocity profile", show_label=False, elem_classes="fl-narrow")
     with gr.Tab("Leaderboard") as board_tab:
-        gr.Markdown("🏆 **Leaderboard** — each lifter's best validated lift. "
-                    "**Score** = how well you lifted (/100) · **Weight** = how much · "
-                    "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
-                    "Only side-on, legal lifts (with a name + weight) count.")
+        gr.Markdown(
+            "🏆 **Leaderboard** — each lifter's best validated lift. "
+            "**Score** = how well you lifted (/100) · **Weight** = how much · "
+            "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
+            "Only side-on, legal lifts (with a name + weight) count.\n\n"
+            "**Tiers** (ranked by DOTS) — roughly the **deadlift** you need, relative to bodyweight:\n"
+            "- 🩶 **Beginner** — under 1× bodyweight  ·  *(DOTS < 40)*\n"
+            "- 💚 **Intermediate** — about **1×** bodyweight  ·  *(DOTS 40)*\n"
+            "- 💙 **Advanced** — about **1.5×** bodyweight  ·  *(DOTS 75)*\n"
+            "- ✨ **Legendary** — about **2×** bodyweight  ·  *(DOTS 110)*\n"
+            "- 👑 **Godly** — about **2.75×** bodyweight and up  ·  *(DOTS 155+)*\n\n"
+            "*Approximate — a squat needs a little more, women's cuts are ~0.8×. The strongest "
+            "lifters alive reach ~200–280 DOTS, so Godly stays earned.*")
         with gr.Row():
             board_by = gr.Radio(["DOTS", "Score", "Weight"], value="DOTS", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")

@@ -52,6 +52,15 @@ def test_leaderboard_dots_board_shows_strength_tier_chip():
     assert "lb-grade" not in html                          # tier replaces the grade on this board
 
 
+def test_leaderboard_row_shows_reps_and_e1rm():
+    """A multi-rep set must not read like a 1RM: show '142 kg × 3' + the estimated single."""
+    rows = [{"rank": 1, "lifter_name": "Faiyaz", "lift": "deadlift", "bar_load_kg": 142.0,
+             "rep_count": 3, "e1rm_kg": 155.0, "score": 94.0, "grade": "S", "dots": 98.0,
+             "bodyweight_kg": 80, "sex": "male"}]
+    html = app._leaderboard_html(rows, "DOTS")
+    assert "142 kg × 3" in html and "e1RM 155" in html
+
+
 def test_leaderboard_godly_chip_is_animated():
     """A top-tier DOTS gets the animated shimmer chip + sparkle."""
     rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 320.0,

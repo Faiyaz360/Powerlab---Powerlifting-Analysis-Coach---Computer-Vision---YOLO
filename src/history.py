@@ -182,7 +182,7 @@ def leaderboard(db_path: str, by: str = "score", lift: str | None = None,
     # carry every display column EXCEPT the ranked one (it returns via MAX(...) AS rank_col), so each
     # board can still show the others (load + bodyweight + dots) in the row subtitle.
     base = ["lifter_name", "lift", "sex", "bodyweight_kg", "score", "bar_load_kg", "dots",
-            "grade", "created_at"]
+            "e1rm_kg", "rep_count", "grade", "created_at"]
     cols = [c for c in base if c != rank_col]
     sql = (f"SELECT {', '.join(cols)}, MAX({rank_col}) AS {rank_col} FROM runs "
            "WHERE validated = 1 AND lifter_name IS NOT NULL AND TRIM(lifter_name) != '' "
