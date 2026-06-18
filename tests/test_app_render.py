@@ -42,6 +42,26 @@ def test_leaderboard_html_dots_board_headlines_dots():
     assert html.count("DOTS") == 1                  # not repeated as a subtitle suffix
 
 
+def test_leaderboard_dots_board_shows_strength_tier_chip():
+    """On the DOTS board the gamified strength tier replaces the execution grade chip."""
+    rows = [{"rank": 1, "lifter_name": "Lil", "lift": "deadlift", "bar_load_kg": 140.0,
+             "score": 90.0, "grade": "A", "dots": 110.0, "bodyweight_kg": 70, "sex": "male"}]
+    html = app._leaderboard_html(rows, "DOTS")
+    assert "lb-tier" in html and "Intermediate" in html   # 140/70 = 2.0x DL (male) -> Intermediate
+    assert "lb-grade" not in html                          # tier replaces the grade on this board
+
+
+def test_tier_card_colours_label_and_progress():
+    ti = {"tier": "Advanced", "idx": 3, "ratio": 2.0, "next": "Elite", "to_next_kg": 50.0, "pct": 0.5}
+    html = app._tier_card(ti)
+    assert "Advanced" in html and "2×BW" in html and "50 kg to Elite" in html
+    assert app._TIER_HEX[3] in html                        # tier-coloured
+
+
+def test_tier_card_empty_when_no_tier():
+    assert "—" in app._tier_card(None)
+
+
 def test_load_board_end_to_end(tmp_path, monkeypatch):
     db = str(tmp_path / "h.db")
     monkeypatch.setattr(app, "DB_PATH", db)

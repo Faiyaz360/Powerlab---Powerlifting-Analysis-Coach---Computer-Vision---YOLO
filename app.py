@@ -18,7 +18,7 @@ import numpy as np
 
 from src import advanced_metrics as am
 from src import barbell, charts, confidence as conf, history, marking, media, pipeline
-from src import lv_profile as lvmod, plate_dataset, score, share
+from src import lv_profile as lvmod, plate_dataset, score, share, strength_standards as ss
 
 try:
     import spaces  # Hugging Face ZeroGPU — allocates a GPU for the decorated call
@@ -147,6 +147,8 @@ footer {display: none !important;}
 .lb-name {flex: 1; font-weight: 600; font-size: 16px; color: var(--body-text-color);}
 .lb-sub {display: block; font-weight: 400; font-size: 12px; color: var(--body-text-color-subdued);}
 .lb-grade {font-size: 13px; font-weight: 700; color: #2b82dd; min-width: 26px; text-align: center;}
+.lb-tier {font-size: 11px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase;
+          padding: 3px 9px; border: 1px solid; border-radius: 999px; white-space: nowrap;}
 .lb-primary {font-size: 22px; font-weight: 700; color: var(--body-text-color);}
 .lb-primary .fl-unit {font-size: 13px;}
 .lb-rank1 {border-color: rgba(245,197,24,.55); background: linear-gradient(0deg, rgba(245,197,24,.10), transparent);}
@@ -364,6 +366,7 @@ def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
         "e1rm": am.est_1rm(bar_load_kg, reps, last_mcv, a["lift"]),
         "power": am.peak_power_w(bar_load_kg, peak),
         "rpe": am.velocity_to_rpe(last_mcv, a["lift"]),
+        "tier": ss.tier(bar_load_kg, bodyweight_kg, sex, a["lift"]),
     }
 
 
@@ -426,6 +429,20 @@ def _cards_html(a: dict, adv: dict) -> str:
     return f"<div class='fl-grid'>{''.join(cards)}</div>"
 
 
+_TIER_HEX = ["#8a94a6", "#3aa0ff", "#22c55e", "#f59e0b", "#eab308"]  # Beginner..Elite chip colours
+
+
+def _tier_card(ti) -> str:
+    """Gamified strength-tier card: the tier label coloured by level, with ×BW and 'N kg to {next}'."""
+    if not ti:
+        return _card("Strength tier", None)
+    col = _TIER_HEX[ti["idx"]]
+    tail = f" · {ti['to_next_kg']:g} kg to {ti['next']}" if ti["next"] else " · top tier"
+    return (f"<div class='fl-card'><span class='fl-label'>Strength tier</span>"
+            f"<span class='fl-value' style='color:{col}'>{ti['tier']}"
+            f"<span class='fl-unit'> {ti['ratio']:g}×BW{tail}</span></span></div>")
+
+
 def _strength_html(s) -> str:
     if not s:
         return ("<div class='fl-hint'>Enter bodyweight and a lift weight above to unlock "
@@ -434,6 +451,7 @@ def _strength_html(s) -> str:
     e1_val = e["e1rm_kg"] if e else None
     cards = [
         _card("DOTS", s["dots"]),
+        _tier_card(s.get("tier")),
         _card("Est. 1RM", e1_val, f"kg · {e['confidence']}" if e else "kg"),
         _card("Peak power", s["power"], "W"),
         _card("Est. RPE", s["rpe"]),
@@ -508,12 +526,19 @@ def _leaderboard_html(rows: list, by: str) -> str:
         # DOTS is the primary on its own board -> don't repeat it in the subtitle
         dots = f" · DOTS {dots_val:.0f}" if (dots_val and by != "DOTS") else ""
         grade = escape(str(r.get("grade") or ""))
+        chip = f"<span class='lb-grade'>{grade}</span>"            # execution grade by default
+        if by == "DOTS":                                          # strength board -> show the tier
+            ti = ss.tier(weight, bw, r.get("sex"), r.get("lift"))
+            if ti:
+                col = _TIER_HEX[ti["idx"]]
+                chip = (f"<span class='lb-tier' style='color:{col};border-color:{col}66'>"
+                        f"{escape(ti['tier'])}</span>")
         items.append(
             f"<div class='lb-row lb-rank{min(rank, 4)}'>"
             f"<span class='lb-medal'>{medal}</span>"
             f"<span class='lb-name'>{escape(str(r.get('lifter_name', '')))}"
             f"<span class='lb-sub'>{sub}{dots}</span></span>"
-            f"<span class='lb-grade'>{grade}</span>"
+            f"{chip}"
             f"<span class='lb-primary'>{primary}</span></div>"
         )
     return f"<div class='lb'>{''.join(items)}</div>"
@@ -1039,7 +1064,7 @@ with gr.Blocks(title="PowerLab") as demo:
                     "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
                     "Only side-on, legal lifts (with a name + weight) count.")
         with gr.Row():
-            board_by = gr.Radio(["Score", "Weight", "DOTS"], value="Score", label="Rank by")
+            board_by = gr.Radio(["DOTS", "Score", "Weight"], value="DOTS", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")
         board_refresh = gr.Button("Refresh")
         board_out = gr.HTML(elem_classes="fl-narrow")
