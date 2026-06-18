@@ -1102,13 +1102,14 @@ with gr.Blocks(title="PowerLab") as demo:
             "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
             "Only side-on, legal lifts (with a name + weight) count.\n\n"
             "**Tiers** (ranked by DOTS) — roughly the **deadlift** you need, relative to bodyweight:\n"
-            "- 🩶 **Beginner** — under 1× bodyweight  ·  *(DOTS < 40)*\n"
-            "- 💚 **Intermediate** — about **1×** bodyweight  ·  *(DOTS 40)*\n"
-            "- 💙 **Advanced** — about **1.5×** bodyweight  ·  *(DOTS 75)*\n"
-            "- ✨ **Legendary** — about **2×** bodyweight  ·  *(DOTS 110)*\n"
-            "- 👑 **Godly** — about **2.75×** bodyweight and up  ·  *(DOTS 155+)*\n\n"
-            "*Approximate — a squat needs a little more, women's cuts are ~0.8×. The strongest "
-            "lifters alive reach ~200–280 DOTS, so Godly stays earned.*")
+            "- 🩶 **Beginner** — under 1× bodyweight  ·  *(DOTS < 50)*\n"
+            "- 💚 **Intermediate** — about **1×** bodyweight  ·  *(DOTS 50)*\n"
+            "- 💙 **Advanced** — about **1.5×** bodyweight  ·  *(DOTS 90)*\n"
+            "- ✨ **Legendary** — about **2.5×** bodyweight  ·  *(DOTS 140)*\n"
+            "- 👑 **Godly** — about **3.5×** bodyweight and up  ·  *(DOTS 200+)*\n\n"
+            "*Tiers describe the trainable population. Cuts are anchored to real records — the highest "
+            "single-lift DOTS ever are ~300 (Stanaszek's 6× bodyweight squat; Hawkins' 310 kg @ 75 kg), "
+            "so Godly is genuine world-class. A squat needs a touch more, women's cuts ~0.8×.*")
         with gr.Row():
             board_by = gr.Radio(["DOTS", "Score", "Weight"], value="DOTS", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")

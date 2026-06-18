@@ -9,12 +9,14 @@ touch higher than a squat at equal effort (heavier absolute load) — fine for a
 from __future__ import annotations
 
 TIERS = ["Beginner", "Intermediate", "Advanced", "Legendary", "Godly"]
-# minimum (single-lift) DOTS to REACH each tier. Calibrated so the top stays aspirational: an
-# elite/world-class single lift reaches ~200-280 DOTS, so Godly (155+) leaves real headroom above
-# a strong national-level lifter — it isn't handed out for a merely-advanced lift. Roughly, on a
-# DEADLIFT these cuts land near 1x / 1.5x / 2x / 2.75x bodyweight (a squat needs a touch more; women
-# ~0.8x). HEURISTIC + CALIBRATABLE.
-_CUTS = [0, 40, 75, 110, 155]
+# minimum (single-lift) DOTS to REACH each tier. ANCHORED TO REAL RECORDS: the highest single-lift
+# DOTS ever are ~300 — Kristy Hawkins 310 kg squat @ 75 kg ~= 302, Andrzej Stanaszek 300.5 kg squat
+# @ 50 kg ~= 299; elite heavier lifters ~260-270 (John Haack 410 kg deadlift @ 90 kg ~= 266). So
+# Godly (200+) is genuine world-class and a strong amateur tops out Legendary. Tiers describe where
+# you sit in the TRAINABLE POPULATION (a 1.9x-bodyweight deadlift is Advanced even though pros are at
+# 260+). On a DEADLIFT the cuts land near 1x / 1.5x / 2.5x / 3.5x bodyweight (squat needs a touch
+# more, women ~0.8x). HEURISTIC + CALIBRATABLE.
+_CUTS = [0, 50, 90, 140, 200]
 
 
 def tier(dots) -> dict | None:

@@ -63,34 +63,34 @@ def test_leaderboard_row_shows_reps_and_e1rm():
 
 def test_leaderboard_godly_chip_is_animated():
     """A top-tier DOTS gets the animated shimmer chip + sparkle."""
-    rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 320.0,
-             "score": 96.0, "grade": "S", "dots": 160.0, "bodyweight_kg": 80, "sex": "male"}]
+    rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 360.0,
+             "score": 96.0, "grade": "S", "dots": 220.0, "bodyweight_kg": 80, "sex": "male"}]
     html = app._leaderboard_html(rows, "DOTS")
     assert "lb-tier-godly" in html and "Godly" in html and "✨" in html
 
 
 def test_leaderboard_legendary_chip_has_golden_glow():
     """Legendary gets the pulsing golden-glow chip (distinct from Godly's shimmer)."""
-    rows = [{"rank": 1, "lifter_name": "Atlas", "lift": "deadlift", "bar_load_kg": 240.0,
-             "score": 94.0, "grade": "S", "dots": 125.0, "bodyweight_kg": 80, "sex": "male"}]
+    rows = [{"rank": 1, "lifter_name": "Atlas", "lift": "deadlift", "bar_load_kg": 290.0,
+             "score": 94.0, "grade": "S", "dots": 160.0, "bodyweight_kg": 80, "sex": "male"}]
     html = app._leaderboard_html(rows, "DOTS")
     assert "lb-tier-legendary" in html and "Legendary" in html
     assert "lb-tier-godly" not in html                     # not the top tier
 
 
 def test_tier_card_legendary_glows():
-    html = app._tier_card(ss.tier(125))                    # DOTS 125 -> Legendary
+    html = app._tier_card(ss.tier(160))                    # DOTS 160 -> Legendary
     assert "fl-tier-legendary" in html and "Legendary" in html
 
 
 def test_tier_card_shows_dots_and_progress():
-    html = app._tier_card(ss.tier(95))                     # Advanced, 15 DOTS to Legendary
-    assert "Advanced" in html and "95 DOTS" in html and "15 to Legendary" in html
+    html = app._tier_card(ss.tier(95))                     # Advanced, 45 DOTS to Legendary
+    assert "Advanced" in html and "95 DOTS" in html and "45 to Legendary" in html
     assert app._TIER_HEX[2] in html                        # Advanced colour
 
 
 def test_tier_card_godly_is_animated():
-    html = app._tier_card(ss.tier(160))
+    html = app._tier_card(ss.tier(220))
     assert "fl-tier-godly" in html and "Godly" in html and "✨" in html
 
 
