@@ -10,8 +10,10 @@ import numpy as np
 
 from . import advanced_metrics as am
 from . import angles
+from . import barbell as barmod
 from . import charts
 from . import pose as P
+from . import spine as spinemod
 
 GREEN = (0, 255, 0)
 RED = (0, 0, 255)
@@ -174,6 +176,17 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         graph_reps = [(int(r.get("liftoff", r["bottom"])), min(int(r["top"]), n - 1)) for r in bar_reps
                       if 0 <= int(r.get("liftoff", r["bottom"])) < n] if bar_reps else None
 
+    # Spine Stage 2a (opt-in): the back's SILHOUETTE curve instead of the straight lean line. Per-
+    # frame segmentation, so only built when requested AND the model is present — otherwise the
+    # straight Stage-1 line is drawn (graceful fallback). plate_r recovers the bar disc from the
+    # scale so we can subtract it from the person mask (the plate fuses into the silhouette).
+    back_curve = None
+    if analysis.get("spine_curve"):
+        bc = spinemod.BackCurve()
+        if bc.available():
+            back_curve = bc
+    plate_r = (barmod.PLATE_DIAMETER_M / 2.0) / scale if scale else None
+
     cap = cv2.VideoCapture(str(in_path))
     writer = cv2.VideoWriter(
         str(out_path), cv2.VideoWriter_fourcc(*"mp4v"), pose.fps, (pose.width, pose.height)
@@ -187,6 +200,9 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
         if f < pose.num_frames:
             cur_start = max([e for e in rep_end_frames if e <= f], default=0)  # current-rep boundary
             region = _body_region(lm, f)
+            # Spine 2a: extract the back silhouette curve from the CLEAN frame (before any overlay is
+            # painted on it). None unless opted in + available -> the straight Stage-1 line is used.
+            curve = _spine_curve(back_curve, frame, lm, f, side, region, bar_xy, plate_r)
             if skeleton != "off":
                 if skeleton == "full":                     # all points (front view / detailed)
                     _draw_full_skeleton(frame, lm, f, region)
@@ -194,10 +210,13 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
                 else:                                      # "side": camera-side sagittal points only
                     _draw_side_skeleton(frame, lm, f, side, region)
                 _draw_joint_angles(frame, lm, f, side, region)
-            # Back-axis tracker (always on): the torso-lean line + live angle. Stage 1 of the spine
-            # feature — lean / hinge only; spinal rounding comes with the silhouette stage.
+            # Back-axis tracker (always on): Stage 2a draws the back's silhouette CURVE when we have
+            # it, else the straight Stage-1 lean line. Both carry the live lean angle.
             lean_f = float(lean_series[f]) if (lean_series is not None and f < len(lean_series)) else None
-            _draw_back_line(frame, lm, f, side, region, lean_f)
+            if curve is not None:
+                _draw_back_curve(frame, curve, lean_f)
+            else:
+                _draw_back_line(frame, lm, f, side, region, lean_f)
             if start_y is not None:
                 _draw_start_line(frame, start_y)
             if start_x is not None:
@@ -324,6 +343,38 @@ def _draw_back_line(frame, lm, f, side, region, lean_deg):
     if lean_deg is not None and not np.isnan(lean_deg):
         mx, my = (hip[0] + sh[0]) // 2, (hip[1] + sh[1]) // 2
         cv2.putText(frame, f"back {lean_deg:.0f}", (mx + int(12 * s), my),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55 * s, SPINE, max(1, int(2 * s)), cv2.LINE_AA)
+
+
+def _spine_curve(extractor, frame, lm, f, side, region, bar_xy, plate_r):
+    """Extract the back's silhouette curve for this frame (Stage 2a), or None to fall back to the
+    straight line. Needs the camera-side shoulder, hip and knee (the knee fixes the back direction);
+    subtracts the barbell plate disc, which otherwise fuses into the person mask."""
+    if extractor is None:
+        return None
+    sh = _xy_ok(lm, f, P.L_SHOULDER if side == "left" else P.R_SHOULDER, region)
+    hip = _xy_ok(lm, f, P.L_HIP if side == "left" else P.R_HIP, region)
+    knee = _xy_ok(lm, f, P.L_KNEE if side == "left" else P.R_KNEE, region)
+    if not (sh and hip and knee):
+        return None
+    plate = None
+    if plate_r and bar_xy is not None and f < len(bar_xy) and not np.any(np.isnan(bar_xy[f])):
+        plate = (float(bar_xy[f, 0]), float(bar_xy[f, 1]), plate_r)
+    pts = extractor.curve(frame, sh, hip, knee, plate)
+    return spinemod.smooth(pts) if pts else None
+
+
+def _draw_back_curve(frame, curve, lean_deg):
+    """Stage 2a: the back's actual SILHOUETTE curve (violet polyline) + the live lean angle — drawn
+    instead of the straight Stage-1 line when the silhouette is available."""
+    pts = np.asarray(curve, np.int32)
+    s = max(0.5, frame.shape[1] / 1300.0)
+    cv2.polylines(frame, [pts], False, SPINE, max(2, int(3 * s)), cv2.LINE_AA)
+    cv2.circle(frame, tuple(pts[0]), max(3, int(4 * s)), SPINE, -1)
+    cv2.circle(frame, tuple(pts[-1]), max(3, int(4 * s)), SPINE, -1)
+    if lean_deg is not None and not np.isnan(lean_deg):
+        mid = pts[len(pts) // 2]
+        cv2.putText(frame, f"back {lean_deg:.0f}", (int(mid[0]) + int(12 * s), int(mid[1])),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.55 * s, SPINE, max(1, int(2 * s)), cv2.LINE_AA)
 
 
