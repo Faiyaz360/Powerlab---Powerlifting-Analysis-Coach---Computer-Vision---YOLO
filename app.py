@@ -161,6 +161,14 @@ footer {display: none !important;}
   background: linear-gradient(90deg, #ffd700, #ff8a00, #ff3cac, #7a5cff, #00e6ff, #ffd700);
   background-size: 300% 100%; -webkit-background-clip: text; background-clip: text; color: transparent;
   animation: godlyShift 4s linear infinite;}
+@keyframes legendGlow {0%, 100% {box-shadow: 0 0 3px rgba(245,184,32,.35);}
+                       50% {box-shadow: 0 0 11px rgba(245,184,32,.85);}}
+.lb-tier-legendary {color: #ffce5e; border-color: rgba(245,184,32,.65);
+  animation: legendGlow 2.6s ease-in-out infinite;}
+@keyframes legendTextGlow {0%, 100% {text-shadow: 0 0 2px rgba(245,184,32,.3);}
+                           50% {text-shadow: 0 0 9px rgba(245,184,32,.8);}}
+.fl-tier-legendary {color: #ffce5e; font-weight: 900;
+  animation: legendTextGlow 2.6s ease-in-out infinite;}
 .lb-primary {font-size: 22px; font-weight: 700; color: var(--body-text-color);}
 .lb-primary .fl-unit {font-size: 13px;}
 .lb-rank1 {border-color: rgba(245,197,24,.55); background: linear-gradient(0deg, rgba(245,197,24,.10), transparent);}
@@ -442,8 +450,8 @@ def _cards_html(a: dict, adv: dict) -> str:
     return f"<div class='fl-grid'>{''.join(cards)}</div>"
 
 
-_TIER_HEX = ["#8a94a6", "#22c55e", "#3aa0ff", "#a855f7", "#f5c518"]  # Beginner/Intermediate/Advanced/
-#           grey       green      blue       purple     gold   Legendary/Godly (Godly draws animated)
+_TIER_HEX = ["#8a94a6", "#22c55e", "#3aa0ff", "#ffb020", "#f5c518"]  # Beginner/Intermediate/Advanced/
+#           grey       green      blue       gold       gold   Legendary(glow) + Godly(shimmer) animate
 
 
 def _tier_card(ti) -> str:
@@ -454,6 +462,8 @@ def _tier_card(ti) -> str:
     tail = f" · {ti['to_next']:g} to {ti['next']}" if ti["next"] else " · max"
     if ti["idx"] == 4:                               # Godly = animated gradient text + sparkle
         head = f"<span class='fl-tier-godly'>✨ {ti['tier']}</span>"
+    elif ti["idx"] == 3:                             # Legendary = pulsing golden glow
+        head = f"<span class='fl-tier-legendary'>{ti['tier']}</span>"
     else:
         head = f"<span style='color:{_TIER_HEX[ti['idx']]}'>{ti['tier']}</span>"
     return (f"<div class='fl-card'><span class='fl-label'>Strength tier</span>"
@@ -547,8 +557,10 @@ def _leaderboard_html(rows: list, by: str) -> str:
         if by == "DOTS":                                          # strength board -> show the tier
             ti = ss.tier(dots_val)                                # tier follows DOTS
             if ti:
-                if ti["idx"] == 4:                                # Godly = animated shimmer chip
+                if ti["idx"] == 4:                                # Godly = animated rainbow-gold shimmer
                     chip = f"<span class='lb-tier lb-tier-godly'>✨ {escape(ti['tier'])}</span>"
+                elif ti["idx"] == 3:                              # Legendary = pulsing golden glow
+                    chip = f"<span class='lb-tier lb-tier-legendary'>{escape(ti['tier'])}</span>"
                 else:
                     col = _TIER_HEX[ti["idx"]]
                     chip = (f"<span class='lb-tier' style='color:{col};border-color:{col}66'>"
