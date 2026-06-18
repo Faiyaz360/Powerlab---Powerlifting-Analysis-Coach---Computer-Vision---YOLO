@@ -1107,9 +1107,7 @@ with gr.Blocks(title="PowerLab") as demo:
             "- 🩶 **Beginner**  ·  💚 **Intermediate**  ·  💙 **Advanced** (national)  ·  "
             "✨ **Legendary** (international elite)  ·  👑 **Godly** (world-record territory)\n"
             "- **Deadlift** cuts: **85 / 135 / 185 / 230** DOTS  (≈ 1.5× / 2.25× / 3.25× / 4× bodyweight)\n"
-            "- **Squat** cuts: **80 / 125 / 170 / 215** DOTS  (a heavy squat is rarer, so its bar sits lower)\n\n"
-            "*IPF ceilings ≈ deadlift 270 (Buettner 261.5 kg @ 67 kg), squat 250 (Perkins 341 kg @ 74 kg). "
-            "Bench joins at Phase 6; a full 3-lift total gets its own separate scale.*")
+            "- **Squat** cuts: **80 / 125 / 170 / 215** DOTS  (≈ 1.5× / 2.25× / 3× / 4× bodyweight)")
         with gr.Row():
             board_by = gr.Radio(["DOTS", "Score", "Weight"], value="DOTS", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")
