@@ -1101,15 +1101,16 @@ with gr.Blocks(title="PowerLab") as demo:
             "**Score** = how well you lifted (/100) · **Weight** = how much · "
             "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
             "Only side-on, legal lifts (with a name + weight) count.\n\n"
-            "**Tiers** (ranked by DOTS) — roughly the **deadlift** you need, relative to bodyweight:\n"
-            "- 🩶 **Beginner** — under 1× bodyweight  ·  *(DOTS < 50)*\n"
-            "- 💚 **Intermediate** — about **1×** bodyweight  ·  *(DOTS 50)*\n"
-            "- 💙 **Advanced** — about **1.5×** bodyweight  ·  *(DOTS 90)*\n"
-            "- ✨ **Legendary** — about **2.5×** bodyweight  ·  *(DOTS 140)*\n"
-            "- 👑 **Godly** — about **3.5×** bodyweight and up  ·  *(DOTS 200+)*\n\n"
-            "*Tiers describe the trainable population. Cuts are anchored to real records — the highest "
-            "single-lift DOTS ever are ~300 (Stanaszek's 6× bodyweight squat; Hawkins' 310 kg @ 75 kg), "
-            "so Godly is genuine world-class. A squat needs a touch more, women's cuts ~0.8×.*")
+            "**Tiers** (ranked by DOTS) — benchmarked against **competitive** lifters, so they're harsh. "
+            "Rough **deadlift** relative to bodyweight:\n"
+            "- 🩶 **Beginner** — under 1.5× bodyweight  ·  *(DOTS < 80)*\n"
+            "- 💚 **Intermediate** — about **1.5×** bodyweight  ·  *(DOTS 80)*\n"
+            "- 💙 **Advanced** — about **2.25×** bodyweight, national level  ·  *(DOTS 130)*\n"
+            "- ✨ **Legendary** — about **3.25×** bodyweight, international elite  ·  *(DOTS 180)*\n"
+            "- 👑 **Godly** — about **4×** bodyweight, IPF world-record territory  ·  *(DOTS 220+)*\n\n"
+            "*Anchored to IPF (drug-tested) world records — world-class single lifts score ~225–270 "
+            "(Buettner's 261.5 kg deadlift @ 67 kg ≈ 271). A strong gym lifter lands Intermediate; a "
+            "squat needs more, women's cuts ~0.8×.*")
         with gr.Row():
             board_by = gr.Radio(["DOTS", "Score", "Weight"], value="DOTS", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")

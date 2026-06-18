@@ -45,10 +45,10 @@ def test_leaderboard_html_dots_board_headlines_dots():
 
 def test_leaderboard_dots_board_shows_strength_tier_chip():
     """On the DOTS board the gamified (DOTS-based) tier replaces the execution grade chip."""
-    rows = [{"rank": 1, "lifter_name": "Lil", "lift": "deadlift", "bar_load_kg": 140.0,
-             "score": 90.0, "grade": "A", "dots": 95.0, "bodyweight_kg": 70, "sex": "male"}]
+    rows = [{"rank": 1, "lifter_name": "Lil", "lift": "deadlift", "bar_load_kg": 210.0,
+             "score": 90.0, "grade": "A", "dots": 150.0, "bodyweight_kg": 70, "sex": "male"}]
     html = app._leaderboard_html(rows, "DOTS")
-    assert "lb-tier" in html and "Advanced" in html        # DOTS 95 -> Advanced band
+    assert "lb-tier" in html and "Advanced" in html        # DOTS 150 -> Advanced band
     assert "lb-grade" not in html                          # tier replaces the grade on this board
 
 
@@ -63,34 +63,34 @@ def test_leaderboard_row_shows_reps_and_e1rm():
 
 def test_leaderboard_godly_chip_is_animated():
     """A top-tier DOTS gets the animated shimmer chip + sparkle."""
-    rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 360.0,
-             "score": 96.0, "grade": "S", "dots": 220.0, "bodyweight_kg": 80, "sex": "male"}]
+    rows = [{"rank": 1, "lifter_name": "Hercules", "lift": "deadlift", "bar_load_kg": 380.0,
+             "score": 96.0, "grade": "S", "dots": 240.0, "bodyweight_kg": 80, "sex": "male"}]
     html = app._leaderboard_html(rows, "DOTS")
     assert "lb-tier-godly" in html and "Godly" in html and "✨" in html
 
 
 def test_leaderboard_legendary_chip_has_golden_glow():
     """Legendary gets the pulsing golden-glow chip (distinct from Godly's shimmer)."""
-    rows = [{"rank": 1, "lifter_name": "Atlas", "lift": "deadlift", "bar_load_kg": 290.0,
-             "score": 94.0, "grade": "S", "dots": 160.0, "bodyweight_kg": 80, "sex": "male"}]
+    rows = [{"rank": 1, "lifter_name": "Atlas", "lift": "deadlift", "bar_load_kg": 320.0,
+             "score": 94.0, "grade": "S", "dots": 200.0, "bodyweight_kg": 80, "sex": "male"}]
     html = app._leaderboard_html(rows, "DOTS")
     assert "lb-tier-legendary" in html and "Legendary" in html
     assert "lb-tier-godly" not in html                     # not the top tier
 
 
 def test_tier_card_legendary_glows():
-    html = app._tier_card(ss.tier(160))                    # DOTS 160 -> Legendary
+    html = app._tier_card(ss.tier(200))                    # DOTS 200 -> Legendary
     assert "fl-tier-legendary" in html and "Legendary" in html
 
 
 def test_tier_card_shows_dots_and_progress():
-    html = app._tier_card(ss.tier(95))                     # Advanced, 45 DOTS to Legendary
-    assert "Advanced" in html and "95 DOTS" in html and "45 to Legendary" in html
+    html = app._tier_card(ss.tier(150))                    # Advanced, 30 DOTS to Legendary
+    assert "Advanced" in html and "150 DOTS" in html and "30 to Legendary" in html
     assert app._TIER_HEX[2] in html                        # Advanced colour
 
 
 def test_tier_card_godly_is_animated():
-    html = app._tier_card(ss.tier(220))
+    html = app._tier_card(ss.tier(240))
     assert "fl-tier-godly" in html and "Godly" in html and "✨" in html
 
 

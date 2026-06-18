@@ -9,14 +9,15 @@ touch higher than a squat at equal effort (heavier absolute load) — fine for a
 from __future__ import annotations
 
 TIERS = ["Beginner", "Intermediate", "Advanced", "Legendary", "Godly"]
-# minimum (single-lift) DOTS to REACH each tier. ANCHORED TO REAL RECORDS: the highest single-lift
-# DOTS ever are ~300 — Kristy Hawkins 310 kg squat @ 75 kg ~= 302, Andrzej Stanaszek 300.5 kg squat
-# @ 50 kg ~= 299; elite heavier lifters ~260-270 (John Haack 410 kg deadlift @ 90 kg ~= 266). So
-# Godly (200+) is genuine world-class and a strong amateur tops out Legendary. Tiers describe where
-# you sit in the TRAINABLE POPULATION (a 1.9x-bodyweight deadlift is Advanced even though pros are at
-# 260+). On a DEADLIFT the cuts land near 1x / 1.5x / 2.5x / 3.5x bodyweight (squat needs a touch
-# more, women ~0.8x). HEURISTIC + CALIBRATABLE.
-_CUTS = [0, 50, 90, 140, 200]
+# minimum (single-lift) DOTS to REACH each tier. ANCHORED TO IPF (drug-tested) WORLD RECORDS and kept
+# deliberately HARSH — benchmarked against COMPETITIVE lifters, not the gym population. IPF world-class
+# single lifts score ~225-270 single-lift DOTS: Jessica Buettner 261.5 kg deadlift @ 67 kg ~= 271,
+# Austin Perkins 341 kg squat @ 74 kg ~= 247, Sara Naldi 197.5 kg squat @ 57 kg ~= 226 (untested
+# all-time freaks reach ~300). So Godly (220+) = IPF world-record territory, Legendary = international
+# elite, Advanced = a national-level competitor, and a strong GYM lifter sits Intermediate. On a
+# DEADLIFT the cuts land near 1.5x / 2.25x / 3.25x / 4x bodyweight (squat needs more, women ~0.8x).
+# HEURISTIC + CALIBRATABLE.
+_CUTS = [0, 80, 130, 180, 220]
 
 
 def tier(dots) -> dict | None:
