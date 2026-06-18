@@ -17,7 +17,7 @@ from . import score as scoremod
 
 def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
             backend: str = "yolo", model_complexity: int = 2, plate_backend: str = "hsv",
-            seed=None, skeleton: str = "side", spine_curve: bool = False, bar_load=None,
+            seed=None, skeleton: str = "side", bar_load=None,
             lifter_name=None, sex=None, bodyweight=None) -> dict:
     """Run pose -> metrics -> faults -> coaching -> annotated video + report.
 
@@ -52,7 +52,6 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["bar_velocity"] = barmod.velocity_per_rep(bar_xy, bar_reps, pose.fps, scale, lift)
     analysis["bar_velocity_series"] = barmod.velocity_series(bar_xy, pose.fps, scale)  # per-frame trace
     analysis["skeleton"] = skeleton   # "side" camera-side joints / "full" all joints / "off" bar-path only
-    analysis["spine_curve"] = spine_curve   # opt-in Stage-2a back silhouette curve (experimental)
     analysis["bar_load"] = bar_load   # kg, for the on-video HUD (None if not entered)
     analysis["lifter_name"] = lifter_name   # on-video HUD + leaderboard attribution
     analysis["sex"] = sex
