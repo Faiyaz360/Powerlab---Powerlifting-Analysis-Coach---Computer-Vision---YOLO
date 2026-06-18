@@ -27,6 +27,7 @@ except ImportError:  # local / non-ZeroGPU: make the decorator a harmless no-op
         @staticmethod
         def GPU(*_args, **_kwargs):
             def _wrap(fn):
+                fn._gpu_wrapped = True   # tag so a test can assert analyze keeps the decorator (see LESSONS)
                 return fn
             return _wrap
 
@@ -749,7 +750,6 @@ def on_autodetect(frame0):
     return _reticle_view(frame0, cx, cy, r), cx, cy, r, 0, instr
 
 
-@spaces.GPU(duration=120)
 def _ghost_panel(video_path, lm, kf, side, prior_blob, bar_xy):
     """Render the ghost-compare panel (current rep vs the prior best) as RGB for the gr.Image, or
     None when there's no prior best to compare against."""
@@ -765,6 +765,7 @@ def _ghost_panel(video_path, lm, kf, side, prior_blob, bar_xy):
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if img is not None else None
 
 
+@spaces.GPU(duration=120)
 def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, radius, frame0, skel,
             ghost_compare, progress=gr.Progress()):
     if not video_path:

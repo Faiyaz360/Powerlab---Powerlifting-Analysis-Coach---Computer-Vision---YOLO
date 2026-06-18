@@ -28,6 +28,14 @@ def test_leaderboard_html_escapes_lifter_name():
     assert "&lt;script&gt;" in html               # it was escaped
 
 
+def test_analyze_stays_gpu_wrapped():
+    # ZeroGPU regression guard: the YOLO pose pass needs the GPU, so the run handler MUST stay
+    # @spaces.GPU-decorated. Inserting _ghost_panel between the decorator and analyze once stole it
+    # (the decorator silently re-attached to _ghost_panel), breaking the live Space. See LESSONS.
+    assert getattr(app.analyze, "_gpu_wrapped", False) is True       # the GPU work lives here
+    assert getattr(app._ghost_panel, "_gpu_wrapped", False) is False  # pure cv2 draw — must NOT grab it
+
+
 def test_leaderboard_html_empty_state():
     assert "No validated lifts" in app._leaderboard_html([], "Score")
 
