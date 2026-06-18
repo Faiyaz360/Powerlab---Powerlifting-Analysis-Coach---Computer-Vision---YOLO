@@ -1,38 +1,42 @@
-"""Strength TIER for a single lift — a gamified rank derived from the lift's DOTS score.
+"""Strength TIER for a single lift — a gamified rank from the lift's DOTS, bracketed PER LIFT.
 
-DOTS already normalizes load for bodyweight + sex (see advanced_metrics.dots), so the tier is just
-a DOTS-band bracket: Beginner -> Godly. One scale for everyone — a woman's and a man's lift at the
-same DOTS land in the same tier. HEURISTIC + CALIBRATABLE single-lift DOTS cuts (real DOTS is on the
-3-lift total, so these are tuned for one lift and adjustable later). A deadlift naturally scores a
-touch higher than a squat at equal effort (heavier absolute load) — fine for a motivating badge.
+DOTS sees only load + bodyweight + sex, NOT which lift it was — but a given DOTS is harder to reach
+on a squat than a deadlift, and far harder on a bench (people deadlift > squat > bench). So each lift
+gets its own bands, calibrated to that lift's IPF (drug-tested) world records:
+  - deadlift ceiling ~270 single-lift DOTS (Jessica Buettner 261.5 kg @ 67 kg ~= 271)
+  - squat    ceiling ~250 (Austin Perkins 341 kg @ 74 kg ~= 247, Sara Naldi 197.5 kg @ 57 kg ~= 226)
+  - bench    much lower (raw records sit well under squat/DL DOTS) — provisional until Phase 6.
+A 3-lift TOTAL is a different beast (elite ~600-700; Kristy Hawkins 711) and gets its OWN scale, used
+once a total board exists. HEURISTIC + CALIBRATABLE.
 """
 from __future__ import annotations
 
 TIERS = ["Beginner", "Intermediate", "Advanced", "Legendary", "Godly"]
-# minimum (single-lift) DOTS to REACH each tier. ANCHORED TO IPF (drug-tested) WORLD RECORDS and kept
-# deliberately HARSH — benchmarked against COMPETITIVE lifters, not the gym population. IPF world-class
-# single lifts score ~225-270 single-lift DOTS: Jessica Buettner 261.5 kg deadlift @ 67 kg ~= 271,
-# Austin Perkins 341 kg squat @ 74 kg ~= 247, Sara Naldi 197.5 kg squat @ 57 kg ~= 226 (untested
-# all-time freaks reach ~300). So Godly (220+) = IPF world-record territory, Legendary = international
-# elite, Advanced = a national-level competitor, and a strong GYM lifter sits Intermediate. On a
-# DEADLIFT the cuts land near 1.5x / 2.25x / 3.25x / 4x bodyweight (squat needs more, women ~0.8x).
-# HEURISTIC + CALIBRATABLE.
-_CUTS = [0, 80, 130, 180, 220]
+
+# minimum DOTS to REACH each tier, per lift (Beginner..Godly)
+_CUTS = {
+    "deadlift": [0, 85, 135, 185, 230],
+    "squat":    [0, 80, 125, 170, 215],
+    "bench":    [0, 50, 85, 120, 160],    # provisional — recalibrate when bench (Phase 6) ships
+    "total":    [0, 300, 400, 500, 600],  # 3-lift DOTS — SEPARATE scale, for a future total board
+}
+_FALLBACK = _CUTS["deadlift"]             # unknown lift -> deadlift bands
 
 
-def tier(dots) -> dict | None:
-    """Tier from a DOTS score, or None when DOTS is missing.
+def tier(dots, lift=None) -> dict | None:
+    """Tier from a single lift's DOTS, bracketed by THAT lift's bands, or None when DOTS is missing.
 
-    Returns ``{tier, idx, dots, next, to_next, pct}`` — ``idx`` 0..4 (Beginner..Godly), ``to_next``
-    is DOTS points to the next tier, ``pct`` is progress (0..1) through the current band.
+    ``lift`` = 'squat' / 'deadlift' / 'bench' / 'total' (unknown -> deadlift bands). Returns
+    ``{tier, idx, dots, next, to_next, pct}`` — ``idx`` 0..4 (Beginner..Godly).
     """
     if dots is None:
         return None
     dots = float(dots)
-    idx = max(0, min(sum(1 for c in _CUTS if dots >= c) - 1, len(TIERS) - 1))
+    cuts = _CUTS.get((lift or "").lower(), _FALLBACK)
+    idx = max(0, min(sum(1 for c in cuts if dots >= c) - 1, len(TIERS) - 1))
     nxt = TIERS[idx + 1] if idx < len(TIERS) - 1 else None
     if nxt is not None:
-        lo, hi = _CUTS[idx], _CUTS[idx + 1]
+        lo, hi = cuts[idx], cuts[idx + 1]
         to_next = round(hi - dots, 1)
         pct = round(max(0.0, min(1.0, (dots - lo) / (hi - lo))), 2) if hi > lo else 0.0
     else:

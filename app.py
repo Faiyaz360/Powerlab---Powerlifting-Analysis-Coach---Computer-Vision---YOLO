@@ -387,7 +387,7 @@ def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
         "e1rm": am.est_1rm(bar_load_kg, reps, last_mcv, a["lift"]),
         "power": am.peak_power_w(bar_load_kg, peak),
         "rpe": am.velocity_to_rpe(last_mcv, a["lift"]),
-        "tier": ss.tier(d),                          # tier follows DOTS (already bodyweight + sex adjusted)
+        "tier": ss.tier(d, a["lift"]),               # tier follows DOTS, bracketed by this lift's bands
     }
 
 
@@ -560,7 +560,7 @@ def _leaderboard_html(rows: list, by: str) -> str:
         grade = escape(str(r.get("grade") or ""))
         chip = f"<span class='lb-grade'>{grade}</span>"            # execution grade by default
         if by == "DOTS":                                          # strength board -> show the tier
-            ti = ss.tier(dots_val)                                # tier follows DOTS
+            ti = ss.tier(dots_val, r.get("lift"))                 # tier per this lift's bands
             if ti:
                 if ti["idx"] == 4:                                # Godly = animated rainbow-gold shimmer
                     chip = f"<span class='lb-tier lb-tier-godly'>✨ {escape(ti['tier'])}</span>"
@@ -1101,16 +1101,15 @@ with gr.Blocks(title="PowerLab") as demo:
             "**Score** = how well you lifted (/100) · **Weight** = how much · "
             "**DOTS** = strength for your bodyweight (pound-for-pound, sex-adjusted). "
             "Only side-on, legal lifts (with a name + weight) count.\n\n"
-            "**Tiers** (ranked by DOTS) — benchmarked against **competitive** lifters, so they're harsh. "
-            "Rough **deadlift** relative to bodyweight:\n"
-            "- 🩶 **Beginner** — under 1.5× bodyweight  ·  *(DOTS < 80)*\n"
-            "- 💚 **Intermediate** — about **1.5×** bodyweight  ·  *(DOTS 80)*\n"
-            "- 💙 **Advanced** — about **2.25×** bodyweight, national level  ·  *(DOTS 130)*\n"
-            "- ✨ **Legendary** — about **3.25×** bodyweight, international elite  ·  *(DOTS 180)*\n"
-            "- 👑 **Godly** — about **4×** bodyweight, IPF world-record territory  ·  *(DOTS 220+)*\n\n"
-            "*Anchored to IPF (drug-tested) world records — world-class single lifts score ~225–270 "
-            "(Buettner's 261.5 kg deadlift @ 67 kg ≈ 271). A strong gym lifter lands Intermediate; a "
-            "squat needs more, women's cuts ~0.8×.*")
+            "**Tiers** are **per-lift** — each calibrated to that lift's own IPF (drug-tested) records, "
+            "so a Godly squat ≠ a Godly deadlift. Ranked by DOTS; harsh by design (competitive, not gym, "
+            "standards):\n"
+            "- 🩶 **Beginner**  ·  💚 **Intermediate**  ·  💙 **Advanced** (national)  ·  "
+            "✨ **Legendary** (international elite)  ·  👑 **Godly** (world-record territory)\n"
+            "- **Deadlift** cuts: **85 / 135 / 185 / 230** DOTS  (≈ 1.5× / 2.25× / 3.25× / 4× bodyweight)\n"
+            "- **Squat** cuts: **80 / 125 / 170 / 215** DOTS  (a heavy squat is rarer, so its bar sits lower)\n\n"
+            "*IPF ceilings ≈ deadlift 270 (Buettner 261.5 kg @ 67 kg), squat 250 (Perkins 341 kg @ 74 kg). "
+            "Bench joins at Phase 6; a full 3-lift total gets its own separate scale.*")
         with gr.Row():
             board_by = gr.Radio(["DOTS", "Score", "Weight"], value="DOTS", label="Rank by")
             board_lift = gr.Radio(["", "squat", "deadlift"], value="", label="Lift")

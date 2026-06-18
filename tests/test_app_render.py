@@ -79,18 +79,18 @@ def test_leaderboard_legendary_chip_has_golden_glow():
 
 
 def test_tier_card_legendary_glows():
-    html = app._tier_card(ss.tier(200))                    # DOTS 200 -> Legendary
+    html = app._tier_card(ss.tier(200, "deadlift"))        # DOTS 200 -> Legendary (deadlift)
     assert "fl-tier-legendary" in html and "Legendary" in html
 
 
 def test_tier_card_shows_dots_and_progress():
-    html = app._tier_card(ss.tier(150))                    # Advanced, 30 DOTS to Legendary
-    assert "Advanced" in html and "150 DOTS" in html and "30 to Legendary" in html
+    html = app._tier_card(ss.tier(150, "deadlift"))        # Advanced, 35 DOTS to Legendary
+    assert "Advanced" in html and "150 DOTS" in html and "35 to Legendary" in html
     assert app._TIER_HEX[2] in html                        # Advanced colour
 
 
 def test_tier_card_godly_is_animated():
-    html = app._tier_card(ss.tier(240))
+    html = app._tier_card(ss.tier(240, "deadlift"))
     assert "fl-tier-godly" in html and "Godly" in html and "✨" in html
 
 
