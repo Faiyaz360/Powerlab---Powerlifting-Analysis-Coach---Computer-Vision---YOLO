@@ -18,7 +18,7 @@ from . import score as scoremod
 def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
             backend: str = "yolo", model_complexity: int = 2, plate_backend: str = "hsv",
             seed=None, skeleton: str = "side", bar_load=None,
-            lifter_name=None, sex=None, bodyweight=None) -> dict:
+            lifter_name=None, sex=None, bodyweight=None, lifter_mvt=None) -> dict:
     """Run pose -> metrics -> faults -> coaching -> annotated video + report.
 
     ``backend``: "mediapipe" (CPU) or "yolo" (YOLO11-pose on GPU, sharper landmarks).
@@ -56,6 +56,7 @@ def analyze(video_path, lift: str = "squat", out_dir="output", progress=None,
     analysis["lifter_name"] = lifter_name   # on-video HUD + leaderboard attribution
     analysis["sex"] = sex
     analysis["bodyweight"] = bodyweight
+    analysis["lifter_mvt"] = lifter_mvt     # per-lifter RPE/e1RM calibration (None -> population table)
     # Faults + coaching cues — computed here, AFTER bar tracking, so velocity-loss can use the real
     # bar speed when calibrated. The coach (LLM or rule fallback) only PHRASES these detected faults.
     faults = faultsmod.detect_faults(analysis, lift)

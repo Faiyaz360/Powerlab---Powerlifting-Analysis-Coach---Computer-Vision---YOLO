@@ -107,7 +107,7 @@ def dots(load_kg: float, bodyweight_kg: float, sex: str = "male") -> float | Non
     return round(load_kg * 500.0 / denom, 1)
 
 
-def est_1rm(load_kg, reps, last_mcv, lift) -> dict | None:
+def est_1rm(load_kg, reps, last_mcv, lift, lifter_mvt=None) -> dict | None:
     """Estimate 1RM from the SET: the rep count plus how close the LAST rep was to failure (its bar
     speed -> RPE -> reps in reserve), via Brzycki on the projected reps-to-failure. Brzycki is
     accurate in powerlifting's low-rep range and, unlike Epley, returns the lifted load itself for a
@@ -117,7 +117,7 @@ def est_1rm(load_kg, reps, last_mcv, lift) -> dict | None:
     """
     if not load_kg or not reps or last_mcv is None or lift not in _RPE_TABLE:
         return None
-    rpe = velocity_to_rpe(last_mcv, lift)
+    rpe = velocity_to_rpe(last_mcv, lift, lifter_mvt)
     if rpe is None:
         return None
     rir = max(0.0, 10.0 - rpe)                        # reps left in reserve on the last rep
@@ -145,11 +145,17 @@ _RPE_TABLE = {
 }
 
 
-def velocity_to_rpe(mcv: float | None, lift: str) -> float | None:
-    """Estimated RPE from mean concentric velocity (slower = higher RPE). Generalized."""
+def velocity_to_rpe(mcv: float | None, lift: str, lifter_mvt: float | None = None) -> float | None:
+    """Estimated RPE from mean concentric velocity (slower = higher RPE). When ``lifter_mvt`` (the
+    lifter's OWN RPE-10 velocity, from lv_profile.personal_mvt) is given, the ladder SHIFTS so RPE 10
+    sits at THEIR true-max speed — keeping the per-RPE spacing; otherwise the population table is used.
+    """
     if mcv is None or lift not in _RPE_TABLE:
         return None
     xs, rpe = _RPE_TABLE[lift]
+    if lifter_mvt is not None:
+        shift = lifter_mvt - xs[0]                    # anchor RPE-10 to the lifter's own max velocity
+        xs = [x + shift for x in xs]
     return round(float(np.interp(mcv, xs, rpe)), 1)
 
 

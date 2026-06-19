@@ -377,6 +377,15 @@ def _session_csv(a, sc, s, adv, lifter_name, bar_load, name) -> str:
     return path
 
 
+def _lifter_mvt(lifter_name, lift):
+    """The lifter's OWN RPE-10 velocity (personal MVT) from their PRIOR logged lifts of this lift, for
+    per-lifter RPE/e1RM calibration. None -> the population table (cold start). Reads history."""
+    if not lifter_name:
+        return None
+    pts = history.load_velocity_points(DB_PATH, lift=lift, lifter=lifter_name)
+    return lvmod.personal_mvt(pts, lift)
+
+
 def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
     """Strength-tier scores; None until bodyweight + bar load are supplied."""
     if not bodyweight_kg or not bar_load_kg:
@@ -385,12 +394,13 @@ def _strength(a: dict, bodyweight_kg, sex, bar_load_kg):
     bv = [v for v in (a.get("bar_velocity") or []) if v]
     reps = len(bv)
     last_mcv = bv[-1].get("mean_velocity_ms") if bv else None
+    lifter_mvt = a.get("lifter_mvt")             # per-lifter calibration (None -> population table)
     d = am.dots(bar_load_kg, bodyweight_kg, sex)
     return {
         "dots": d,
-        "e1rm": am.est_1rm(bar_load_kg, reps, last_mcv, a["lift"]),
+        "e1rm": am.est_1rm(bar_load_kg, reps, last_mcv, a["lift"], lifter_mvt),
         "power": am.peak_power_w(bar_load_kg, peak),
-        "rpe": am.velocity_to_rpe(last_mcv, a["lift"]),
+        "rpe": am.velocity_to_rpe(last_mcv, a["lift"], lifter_mvt),
         "tier": ss.tier(d, a["lift"]),               # tier follows DOTS, bracketed by this lift's bands
     }
 
@@ -784,12 +794,14 @@ def analyze(video_path, lifter_name, lift, bodyweight, sex, bar_load, cx, cy, ra
             pass
 
     name_clean = (lifter_name or "").strip()
+    lifter_mvt = _lifter_mvt(name_clean or None, lift)   # calibrate RPE/e1RM to THIS lifter's prior lifts
     progress(0.1, desc="Loading video...")
     try:
         result = pipeline.analyze(
             video_path, lift=lift, out_dir=OUT_DIR, seed=seed_tuple, backend=POSE_BACKEND,
             skeleton={"Side points": "side", "All points": "full", "None": "off"}.get(skel, "side"),
             bar_load=bar_load, lifter_name=name_clean or None, sex=sex, bodyweight=bodyweight,
+            lifter_mvt=lifter_mvt,
             progress=lambda f: progress(0.5, desc="Analysing frames..."),
         )
     except ValueError as exc:

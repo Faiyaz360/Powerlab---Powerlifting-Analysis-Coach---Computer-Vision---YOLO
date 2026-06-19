@@ -210,7 +210,8 @@ def render_video(in_path, out_path, pose: P.PoseResult, analysis: dict):
             mean_ms = next((m for tf, m in reversed(rep_means) if tf <= f), None)  # last rep's mean
             _draw_hud(frame, lift_name, bar_load, done, speed_ms, mean_ms,
                       name=analysis.get("lifter_name"), sex=analysis.get("sex"),
-                      bodyweight=analysis.get("bodyweight"), lift_score=analysis.get("lift_score"))
+                      bodyweight=analysis.get("bodyweight"), lift_score=analysis.get("lift_score"),
+                      lifter_mvt=analysis.get("lifter_mvt"))
             _draw_badge(frame, f, rep_metrics, badge_window, badge_y)
             _draw_velocity_graph(frame, graph_pts, graph_box, f, graph_reps)
             _draw_path_panel(frame, path_panel_pts, path_runs, path_panel_box, f)
@@ -439,7 +440,7 @@ def _draw_score_badge(frame, lift_score, x, y, s):
 
 
 def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms,
-              name=None, sex=None, bodyweight=None, lift_score=None):
+              name=None, sex=None, bodyweight=None, lift_score=None, lifter_mvt=None):
     """Translucent top-left panel: a compact lifter line (name · gender · bodyweight), then exercise/
     weight, rep, live + mean bar speed and RPE — with a gamified /100 score badge under it. The box
     auto-sizes to its text and everything scales with the frame."""
@@ -458,7 +459,7 @@ def _draw_hud(frame, lift, bar_load, rep_no, speed_ms, mean_ms,
         rows.append((f"{speed_ms:.2f} m/s  now", 0.8 * s, WHITE))
     if mean_ms is not None:
         rows.append((f"{mean_ms:.2f} m/s  mean", 0.8 * s, WHITE))
-        rpe = am.velocity_to_rpe(mean_ms, lift)
+        rpe = am.velocity_to_rpe(mean_ms, lift, lifter_mvt)
         if rpe is not None:
             rows.append((f"RPE ~{rpe:.1f}", 0.8 * s, (120, 220, 120)))
     thick = max(1, int(2 * s))

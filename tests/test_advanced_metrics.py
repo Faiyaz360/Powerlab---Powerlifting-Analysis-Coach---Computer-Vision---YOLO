@@ -129,3 +129,20 @@ def test_est_1rm_true_deadlift_max_reads_rpe10_and_no_inflation():
     assert out["rpe"] == 10.0
     assert out["e1rm_kg"] == 250.0
     assert out["confidence"] == "medium"   # deadlift velocity->1RM is least reliable (downgraded)
+
+
+def test_velocity_to_rpe_personal_mvt_shifts_ladder():
+    # Elite grinder whose true deadlift max moves at 0.06 m/s: a 0.10 m/s rep is RPE ~9 for HIM,
+    # not the population RPE 10. The ladder shifts to his own anchor.
+    assert am.velocity_to_rpe(0.06, "deadlift", lifter_mvt=0.06) == 10.0
+    assert am.velocity_to_rpe(0.10, "deadlift", lifter_mvt=0.06) == 9.0
+    # Same 0.10 m/s rep WITHOUT calibration reads the population RPE 10 (0.10 below the 0.15 anchor).
+    assert am.velocity_to_rpe(0.10, "deadlift") == 10.0
+
+
+def test_est_1rm_uses_personal_mvt():
+    # Intermediate whose deadlift max moves at 0.22 m/s: a 0.22 single is a true max for THEM ->
+    # RPE 10 -> e1RM = the load (the population table would call 0.22 only ~RPE 8 and inflate e1RM).
+    out = am.est_1rm(200.0, 1, 0.22, "deadlift", lifter_mvt=0.22)
+    assert out["rpe"] == 10.0
+    assert out["e1rm_kg"] == 200.0

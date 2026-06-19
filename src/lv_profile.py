@@ -59,3 +59,31 @@ def est_1rm(profile: dict, lift: str | None = None) -> float | None:
     """Estimated 1RM = the load at the lift's minimal-velocity threshold (extrapolated — treat as a
     guide, not a max attempt)."""
     return load_at_velocity(profile, MVT.get(lift or "", DEFAULT_MVT))
+
+
+# --- per-lifter calibration: a lifter's OWN RPE-10 velocity, learned from their logged lifts -------
+_MIN_CALIB_POINTS = 3      # logged lifts of this lift before we trust a personal MVT over the table
+_HEAVY_FRAC = 0.85         # a rep counts as HEAVY if its load >= this * the lifter's heaviest logged
+_MVT_BAND = (0.03, 0.60)   # plausible RPE-10 velocity (m/s); outside = mis-scaled video, reject
+
+
+def personal_mvt(points: list[tuple], lift: str | None = None) -> float | None:
+    """A lifter's OWN minimal-velocity threshold (their RPE-10 velocity), for per-lifter RPE/e1RM
+    calibration. It is the SLOWEST mean concentric velocity they have produced on a HEAVY rep of this
+    lift — you cannot move slower than your true grind, so that min approximates their personal MVT.
+
+    ``points`` is their prior (load, velocity) history for the lift. Returns None until there is
+    enough heavy data (cold start -> the caller falls back to the population table), or if the result
+    is physically implausible (a mis-scaled plate). ``lift`` is accepted for a future per-lift band;
+    the population default still lives in ``MVT``. Pure.
+    """
+    pts = [(float(l), float(v)) for l, v in points if l and v is not None and v > 0]
+    if len(pts) < _MIN_CALIB_POINTS:
+        return None
+    max_load = max(l for l, _ in pts)
+    heavy = [v for l, v in pts if l >= _HEAVY_FRAC * max_load]
+    if not heavy:
+        return None
+    mvt = min(heavy)
+    lo, hi = _MVT_BAND
+    return mvt if lo <= mvt <= hi else None

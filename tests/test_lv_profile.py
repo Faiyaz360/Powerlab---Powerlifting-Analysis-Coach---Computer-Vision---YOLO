@@ -42,3 +42,18 @@ def test_non_negative_slope_returns_no_load():
     p = lv.fit_profile([(100, 0.4), (140, 0.8)])
     assert lv.load_at_velocity(p, 0.5) is None
     assert lv.est_1rm(p, "squat") is None
+
+
+def test_personal_mvt_min_of_heavy_reps():
+    # Slowest HEAVY rep ~ their RPE-10 velocity; a fast light warm-up doesn't count.
+    pts = [(100.0, 0.50), (180.0, 0.20), (190.0, 0.16), (200.0, 0.14)]  # heavier -> slower
+    assert lv.personal_mvt(pts, "deadlift") == 0.14
+
+
+def test_personal_mvt_none_until_enough_data():
+    assert lv.personal_mvt([(200.0, 0.14), (190.0, 0.16)], "deadlift") is None   # < 3 points
+
+
+def test_personal_mvt_rejects_implausible_scale():
+    # A mis-scaled plate makes every velocity absurd -> reject, fall back to the population table.
+    assert lv.personal_mvt([(200.0, 5.0), (190.0, 6.0), (180.0, 7.0)], "deadlift") is None
