@@ -23,3 +23,8 @@ clips_kinetics/
 weights/
 # Phase 2 local history (re-creatable)
 data/
+
+# Phase-3 3D model R&D (local only, never committed/deployed)
+vendor/
+*.pth
+*.bin
