@@ -99,6 +99,21 @@ the built-in rule-based cues are used.
 5. Press **Analyse** → annotated video, /100 score, coaching cues, a depth/lockout verdict, and charts.
 6. A valid side-on, named, weighted lift is added to the **Leaderboard** (DOTS + strength tier).
 
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="assets/demo/01-analyse.png"><br><sub><b>Analyse</b> — enter your details and upload a side-on clip</sub></td>
+<td width="50%"><img src="assets/demo/02-scored-analysis.png"><br><sub><b>Scored analysis</b> — annotated video, a /100 score, and coaching</sub></td>
+</tr>
+<tr>
+<td><img src="assets/demo/03-coaching.png"><br><sub><b>Coaching</b> — deterministic cues that only phrase the faults the pipeline detected</sub></td>
+<td><img src="assets/demo/04-metrics.png"><br><sub><b>Metrics</b> — per-rep velocity, bar-speed charts, DOTS / e1RM / peak power / RPE</sub></td>
+</tr>
+</table>
+
+<img src="assets/demo/05-leaderboard.png" width="640"><br><sub><b>Leaderboard</b> — DOTS (pound-for-pound, sex-adjusted), with per-lift strength tiers</sub>
+
 ## Examples
 
 A deadlift analysed — live skeleton + bar path, per-rep velocity, a lockout check, and coaching cues:
