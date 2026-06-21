@@ -17,7 +17,6 @@ GREEN = (0, 255, 0)
 RED = (0, 0, 255)
 WHITE = (255, 255, 255)
 YELLOW = (255, 255, 0)
-MAGENTA = (255, 0, 255)
 SKEL_LINE = (0, 255, 255)   # bold analysis-chain colour = TRUE yellow (BGR); clear of the bar-path
 #                             red->blue->green gradient so the skeleton never blends into the bar line
 JOINT = (255, 255, 255)     # joint dots = white (also clear of the bar-path colours)

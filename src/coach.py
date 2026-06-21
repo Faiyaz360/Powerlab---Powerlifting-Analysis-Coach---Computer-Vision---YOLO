@@ -237,12 +237,3 @@ def _fallback_cues(issue_list: list[str], strengths: list[str] | None = None) ->
         out.append(kb["fix"] if kb else f"Work on: {issue.replace('_', ' ')}.")
     out.append("Lock in that fix and chase it next set — you've got this.")
     return out
-
-
-def coach_from_issues(issue_list, rep_count: int) -> list[str]:
-    """Back-compat wrapper (rule-based only). Prefer generate_cues for the full LLM-capable path."""
-    if rep_count == 0:
-        return [NO_REPS_MSG]
-    if not issue_list:
-        return [CLEAN_SET_MSG]
-    return _fallback_cues(issue_list)

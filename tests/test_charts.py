@@ -25,7 +25,3 @@ def test_velocity_bars_returns_figure():
 
 def test_velocity_bars_handles_empty():
     assert isinstance(charts.velocity_bars([]), Figure)
-
-
-def test_drift_curve_handles_uncalibrated():
-    assert isinstance(charts.drift_curve(None, None, 0, 1), Figure)

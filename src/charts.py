@@ -149,19 +149,3 @@ def bar_path(analysis: dict):
     ax.set_aspect("equal", "box")
     fig.tight_layout()
     return fig
-
-
-def drift_curve(bar_xy: np.ndarray, scale_m_per_px: float | None, start: int, end: int):
-    """Horizontal bar-path drift over a rep (cm). Empty-safe when uncalibrated."""
-    fig, ax = plt.subplots(figsize=(4, 2.4))
-    if scale_m_per_px is None or bar_xy is None:
-        ax.text(0.5, 0.5, "no bar-path data", ha="center", va="center")
-        ax.axis("off")
-    else:
-        xs = bar_xy[start:end + 1, 0].astype(float)
-        drift_cm = (xs - xs[0]) * scale_m_per_px * 100
-        ax.plot(np.arange(len(drift_cm)), drift_cm, color="#BA7517")
-        ax.set_xlabel("frame")
-        ax.set_ylabel("drift (cm)")
-    fig.tight_layout()
-    return fig

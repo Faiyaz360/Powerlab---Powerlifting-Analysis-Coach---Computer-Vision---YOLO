@@ -28,3 +28,9 @@ data/
 vendor/
 *.pth
 *.bin
+
+# internal AI/dev docs — kept locally, not in the public repo
+CLAUDE.md
+LESSONS.md
+MORNING-REPORT.md
+docs/superpowers/

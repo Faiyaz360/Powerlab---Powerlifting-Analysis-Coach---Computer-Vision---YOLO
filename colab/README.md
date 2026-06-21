@@ -31,7 +31,7 @@ depth/lockout pass) is human judgment — keep that manual in `eval/groundtruth/
 - Hands-off weekly (Windows, run once in PowerShell):
   ```powershell
   schtasks /create /tn "lift-gather" /sc weekly /d SUN /st 09:00 ^
-    /tr "cmd /c cd /d \"C:\Users\user\Projects\Powerlifting project\" && .\.venv\Scripts\python.exe tools\gather_clips.py --queries-file tools\queries.txt"
+    /tr "cmd /c cd /d \"C:\path\to\Powerlifting-project\" && .\.venv\Scripts\python.exe tools\gather_clips.py --queries-file tools\queries.txt"
   ```
 
 ---
