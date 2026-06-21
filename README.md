@@ -16,6 +16,8 @@ Upload a side-on lift video → a vision model tracks your body and the barbell 
 feedback and metrics: squat depth, joint angles, bar path, bar speed (VBT), a /100 score, and a
 strength leaderboard. No wearables, no extra hardware — just your phone camera.
 
+**▶ Try it live:** **[PowerLab on Hugging Face Spaces](https://huggingface.co/spaces/Faiyaz360/Power-Lab)**
+
 **The guiding principle is honesty.** The camera must be side-on for 2D angles to be valid, so an
 **off-axis gate** refuses to judge a clip it can't measure honestly, coaching cues are **deterministic**
 (an LLM only *phrases* faults the code already detected — it never invents them), and every estimate
@@ -82,6 +84,15 @@ Results (annotated MP4, `report.md`, `metrics.json`, charts) land in `output/`.
 
 Optional: copy `.env.example` to `.env` to enable the LLM coach (`OPENROUTER_API_KEY`). Without it,
 the built-in rule-based cues are used.
+
+## Using the web app
+
+1. Open the app — the [live demo](https://huggingface.co/spaces/Faiyaz360/Power-Lab) above, or run `python app.py` locally.
+2. On the **Analyse** tab, enter your **name, bodyweight, lift, and lift weight**.
+3. Upload a **side-on** video of your set.
+4. **Tap the centre of a plate, then its edge** to mark the barbell (this drives the bar-speed tracker).
+5. Press **Analyse** → annotated video, /100 score, coaching cues, a depth/lockout verdict, and charts.
+6. A valid side-on, named, weighted lift is added to the **Leaderboard** (DOTS + strength tier).
 
 ## Recording guide (garbage in → garbage out)
 
