@@ -99,6 +99,14 @@ the built-in rule-based cues are used.
 5. Press **Analyse** → annotated video, /100 score, coaching cues, a depth/lockout verdict, and charts.
 6. A valid side-on, named, weighted lift is added to the **Leaderboard** (DOTS + strength tier).
 
+## Examples
+
+A deadlift analysed — live skeleton + bar path, per-rep velocity, a lockout check, and coaching cues:
+
+![Deadlift analysis](assets/demo/deadlift-analysis.gif)
+
+[▶ Watch the full clip](assets/demo/deadlift-analysis.mp4) (the squat example is up top).
+
 ## Recording guide (garbage in → garbage out)
 
 - Camera **dead side-on** (the plate edge-on), on a tripod, ~hip height. Off-axis foreshortens every
