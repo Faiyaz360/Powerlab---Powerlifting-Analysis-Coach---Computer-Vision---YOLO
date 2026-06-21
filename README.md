@@ -18,10 +18,25 @@ strength leaderboard. No wearables, no extra hardware — just your phone camera
 
 **▶ Try it live:** **[PowerLab on Hugging Face Spaces](https://huggingface.co/spaces/Faiyaz360/Power-Lab)**
 
-![Annotated squat analysis](assets/demo/squat-analysis.gif)
+![PowerLab — annotated deadlift analysis](assets/demo/deadlift-analysis.gif)
 
-> *A squat analysed — live skeleton + joint angles, depth, bar path, bar speed (VBT), and a running
-> /100 score. [▶ Watch the full clip](assets/demo/squat-analysis.mp4).*
+> *A deadlift analysed — annotated video (skeleton + bar path), per-rep velocity (VBT), a /100 score,
+> and evidence-based coaching. [▶ Watch the full clip](assets/demo/deadlift-analysis.mp4).*
+
+## Screenshots
+
+<table>
+<tr>
+<td width="50%"><img src="assets/demo/01-analyse.png"><br><sub><b>Analyse</b> — enter your details and upload a side-on clip</sub></td>
+<td width="50%"><img src="assets/demo/02-scored-analysis.png"><br><sub><b>Scored analysis</b> — annotated video, a /100 score, and coaching</sub></td>
+</tr>
+<tr>
+<td><img src="assets/demo/03-coaching.png"><br><sub><b>Coaching</b> — deterministic cues that only phrase the faults the pipeline detected</sub></td>
+<td><img src="assets/demo/04-metrics.png"><br><sub><b>Metrics</b> — per-rep velocity, bar-speed charts, DOTS / e1RM / peak power / RPE</sub></td>
+</tr>
+</table>
+
+<img src="assets/demo/05-leaderboard.png" width="640"><br><sub><b>Leaderboard</b> — DOTS (pound-for-pound, sex-adjusted), with per-lift strength tiers</sub>
 
 **The guiding principle is honesty.** The camera must be side-on for 2D angles to be valid, so an
 **off-axis gate** refuses to judge a clip it can't measure honestly, coaching cues are **deterministic**
@@ -98,29 +113,6 @@ the built-in rule-based cues are used.
 4. **Tap the centre of a plate, then its edge** to mark the barbell (this drives the bar-speed tracker).
 5. Press **Analyse** → annotated video, /100 score, coaching cues, a depth/lockout verdict, and charts.
 6. A valid side-on, named, weighted lift is added to the **Leaderboard** (DOTS + strength tier).
-
-## Screenshots
-
-<table>
-<tr>
-<td width="50%"><img src="assets/demo/01-analyse.png"><br><sub><b>Analyse</b> — enter your details and upload a side-on clip</sub></td>
-<td width="50%"><img src="assets/demo/02-scored-analysis.png"><br><sub><b>Scored analysis</b> — annotated video, a /100 score, and coaching</sub></td>
-</tr>
-<tr>
-<td><img src="assets/demo/03-coaching.png"><br><sub><b>Coaching</b> — deterministic cues that only phrase the faults the pipeline detected</sub></td>
-<td><img src="assets/demo/04-metrics.png"><br><sub><b>Metrics</b> — per-rep velocity, bar-speed charts, DOTS / e1RM / peak power / RPE</sub></td>
-</tr>
-</table>
-
-<img src="assets/demo/05-leaderboard.png" width="640"><br><sub><b>Leaderboard</b> — DOTS (pound-for-pound, sex-adjusted), with per-lift strength tiers</sub>
-
-## Examples
-
-A deadlift analysed — live skeleton + bar path, per-rep velocity, a lockout check, and coaching cues:
-
-![Deadlift analysis](assets/demo/deadlift-analysis.gif)
-
-[▶ Watch the full clip](assets/demo/deadlift-analysis.mp4) (the squat example is up top).
 
 ## Recording guide (garbage in → garbage out)
 
