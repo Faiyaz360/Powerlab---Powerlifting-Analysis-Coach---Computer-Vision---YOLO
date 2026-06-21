@@ -18,6 +18,11 @@ strength leaderboard. No wearables, no extra hardware — just your phone camera
 
 **▶ Try it live:** **[PowerLab on Hugging Face Spaces](https://huggingface.co/spaces/Faiyaz360/Power-Lab)**
 
+![Annotated squat analysis](assets/demo/squat-analysis.gif)
+
+> *A squat analysed — live skeleton + joint angles, depth, bar path, bar speed (VBT), and a running
+> /100 score. [▶ Watch the full clip](assets/demo/squat-analysis.mp4).*
+
 **The guiding principle is honesty.** The camera must be side-on for 2D angles to be valid, so an
 **off-axis gate** refuses to judge a clip it can't measure honestly, coaching cues are **deterministic**
 (an LLM only *phrases* faults the code already detected — it never invents them), and every estimate
